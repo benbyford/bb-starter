@@ -1,0 +1,418 @@
+<?php
+
+/**
+ * ProcessWire AdminSaveActions
+ *
+ * Admin Save Actions adds possibility to choose where the browser gets redirected after a save action (Page | Template | Field).
+ *
+ * @copyright Copyright (c) 2013-2014, Niklas Lakanen
+ *
+ */
+
+class AdminSaveActions extends WireData implements Module, ConfigurableModule {
+
+	/**
+	 * @var string Chosen action
+	 *
+	 */
+	private $adminSaveAction;
+	/**
+	 * @var string Name of the cookie used to save chosen action
+	 *
+	 */
+	private $cookieName;
+	/**
+	 * @var array Settings for current process (@see getProcessSettings())
+	 *
+	 */
+	private $currentProcess;
+
+	/**
+	 * Return information about this module (required)
+	 *
+	 * @return array
+	 *
+	 */
+	static public function getModuleInfo() {
+		return array(
+			'title'    => 'Admin Save Actions',
+			'summary'  => 'Lets the user choose from alternatives what happens after a page/field/template add/save.',
+			'version'  => 101,
+			'author'   => 'Niklas Lakanen',
+			'singular' => true,
+			'autoload' => true
+		);
+	}
+
+	/**
+	 * Default configuration
+	 *
+	 */
+	static public function getDefaultConfig() {
+		return array(
+			'configInputType' => 'radios',
+			'siblingLimit'    => '100'
+		);
+	}
+
+	/**
+	 * Return settings for all the supported processes
+	 *
+	 * @return array Following settings for each supported process:
+	 *   - type:            short name to identify different types of processes
+	 *   - buildFormMethod: method to hook for adding input fields used to choose after save action
+	 *   - targetButtonIds: ordered array of id's used to find correct submit button
+	 *   - regexp:          regular expression for matching url & extracting target id
+	 *
+	 */
+	static public function getProcessSettings() {
+		return array(
+			'ProcessPageEdit' => array(
+				'type'            => 'page',
+				'buildFormMethod' => 'ProcessPageEdit::buildForm',
+				// first, try to find a 'publish' button (case: unpublished page)
+				// if there was no luck, try to find a 'save' button (case: published page)
+				'targetButtonIds' => array('submit_publish', 'submit_save'),
+				// 2.3 core has '&s=1' after the id
+				'regexp'          => '|^\./\?id=(\d+)(?:&s=1)?$|'
+			),
+			'ProcessPageAdd' => array(
+				'type'            => 'page',
+				'buildFormMethod' => 'ProcessPageAdd::buildForm',
+				'targetButtonIds' => array('submit_publish'),
+				'regexp'          => '|^\.\./edit/\?id=(\d+)$|'
+			),
+			'ProcessField' => array(
+				'type'            => 'field',
+				'buildFormMethod' => 'ProcessField::buildEditForm',
+				'targetButtonIds' => array('submit_save_field'),
+				// allow when saving context dependent settings as well (fieldgroup=<nn>)
+				'regexp'          => '|^edit\?id=(\d+)(?:&fieldgroup_id=\d+)?$|'
+			),
+			'ProcessTemplate' => array(
+				'type'            => 'template',
+				'buildFormMethod' => 'ProcessTemplate::buildEditForm',
+				'targetButtonIds' => array('submit'),
+				'regexp'          => '|^edit\?id=(\d+)$|'
+			)
+		);
+	}
+
+	/**
+	 * Populate default configuration (will be overwritten after constructor with user's own configuration)
+	 *
+	 */
+	public function __construct() {
+		foreach(self::getDefaultConfig() as $key => $value) {
+			$this->$key = $value;
+		}
+	}
+
+	/**
+	 * init() is called when PW's API is ready
+	 *
+	 */
+	public function init() {
+	}
+
+	/**
+	 * ready() is called when both PW's API is ready and $page object is initialized (for autoload modules!)
+	 *
+	 */
+	public function ready() {
+
+		// we're only interested in some processes
+		$settings = $this->getProcessSettings();
+		if(!array_key_exists($this->page->process, $settings)) return;
+		else $this->currentProcess = $settings[$this->page->process];
+
+		// don't do a thing if template has just been changed
+		if($this->page->process == 'ProcessPageEdit' && $this->input->get->template) return;
+		
+		// don't do a thing if we're editing a field from inside a template
+		if($this->input->get->process_template && $this->input->get->modal) return;
+
+		// we're about to really do something so let's initialize some more
+
+		// cookie per user and per context
+		$this->cookieName = $this->user->id . "-adminSaveAction-" . $this->currentProcess['type'];
+
+		// action from the cookie, default to original behaviour (edit)
+		$this->adminSaveAction = $this->input->cookie[$this->cookieName];
+		if(!$this->adminSaveAction) $this->adminSaveAction = 'edit';
+
+
+		// after save: hook Session::redirect()
+		if($this->input->post->adminSaveAction || $this->input->post->submit_save_field) {
+			$this->session->addHookBefore('redirect', $this, 'hookSessionRedirect');
+
+		// showing an edit form: hook <process>::build(Edit)Form
+		} else if($this->currentProcess['type'] == 'page' || $this->input->urlSegment1 == 'edit') {
+			$this->addHookAfter($this->currentProcess['buildFormMethod'], $this, 'hookBuildForm');
+		}
+
+	}
+
+	/**
+	 * Hook to add a radio button for choosing the action after page add/save/publish
+	 *
+	 * @param HookEvent $event
+	 *
+	 */
+	public function hookBuildForm(HookEvent $event) {
+		// get the InputFieldForm object from the event (return value of buildForm())
+		$form = $event->return;
+
+		// we want to attach some options just before save button
+		// --> options will be shown on every tab (better solution, anyone?)
+
+		$target = null;
+		foreach($this->currentProcess['targetButtonIds'] as $id) {
+			$target = $form->get($id);
+			if($target) break;
+		}
+
+		// if a suitable target was found, add one type of selection
+		if($target) {
+			switch($this->configInputType) {
+				case 'radios':
+					// use radio buttons in a container
+					$f = new InputfieldRadios();
+					$f->attr('id+name', 'adminSaveAction');
+					$f->label = $this->_('After save...');
+					$f->collapsed = Inputfield::collapsedYes;
+		
+					$f->addOptions($this->getActions());
+		
+					$f->value = $this->adminSaveAction;
+		
+					$form->insertBefore($f, $target);
+		
+					// hook the render() function to add a checkbox inside the container
+					$f->addHook('render', $this, 'hookAdminSaveActionRender');
+					break;
+				
+				case 'dropdown':
+					// use dropdown with the bottom Save button
+					
+					// change the target to the very last button if there's both publish and save unpublished available
+					if($this->currentProcess['type'] == 'page' && $saveButton = $form->get('submit_save')) $target = $saveButton;
+					
+					// hook the submit button's render() function to add the dd + cb after it
+					$target->addHook('render', $this, 'hookSubmitRender');
+					break;
+			}
+		}
+	}
+
+	/**
+	 * Forms a list of actions to choose from
+	 *
+	 * @return array Associative array of actions (value => label)
+	 *
+	 */
+	private function getActions() {
+		// common actions for all types
+		$actions = array(
+			'edit' => $this->_('Continue editing'),
+			'list' => $this->_('Return to list')
+		);
+
+		// add more actions depending on active process type
+		switch($this->currentProcess['type']) {
+			case 'page':
+				// when editing the root page, don't add 'new sibling' option
+				if($this->input->get->id == 1) {
+					// and use the default action once again, if 'new' is the save action
+					if($this->adminSaveAction == 'new') $this->adminSaveAction = 'edit';
+				} else {
+					$actions['new'] = $this->_('Create a new sibling page');
+
+					// check there aren't too many siblings to avoid slowing things down
+					$editedPage = $this->pages->get($this->input->get->id);
+					// by default next() skips hidden and unpublished pages
+					// if edited page is unpublished, include all pages when finding next sibling as well
+					// if it's only hidden, include hidden but not unpublished pages
+					$includeSelector = '';
+					if($editedPage->status & Page::statusUnpublished) $includeSelector = ', include=all';
+					else if($editedPage->status & Page::statusHidden) $includeSelector = ', include=hidden';
+					if($this->pages->count("parent=$editedPage->parent $includeSelector") <= $this->siblingLimit) {
+						// a separate siblings() call is required to match hidden/unpublished pages too
+						$nextPage = $editedPage->next($editedPage->siblings($includeSelector));
+						// show option only if next page has been found
+						if($nextPage->id) {
+							$actionId = 'next-' . $nextPage->id;
+							$actions[$actionId] = $this->_('Edit next sibling page');
+							// modify default action to match value with id if 'next' was the default
+							if($this->adminSaveAction == 'next') $this->adminSaveAction = $actionId;
+						} else if($this->adminSaveAction == 'next') {
+							// 'next' is not an option
+							// 'list' matches better than the default 'edit' would
+							$this->adminSaveAction = 'list';
+						}
+					}
+				}
+				$actions['view'] = $this->_('View page');
+				break;
+			case 'template':
+				$actions['new'] = $this->_('Create a new template');
+				break;
+			case 'field':
+				$actions['new'] = $this->_('Create a new field');
+				break;
+		}
+
+		return $actions;
+	}
+
+	/**
+	 * Hook to add a checkbox for remembering the setting inside the container for saveAction radios
+	 *
+	 * @param HookEvent $event Event object: this is where the return value resides after the render function itself
+	 *
+	 */
+	public function hookAdminSaveActionRender (HookEvent $event) {
+		$event->return = $event->return . $this->renderRememberCheckbox();
+	}
+
+	/**
+	 * Hook to add a drop down where to choose an after save action from
+	 *
+	 * @param HookEvent $event Event object where the return value has markup from submit buttons render() function
+	 *
+	 */
+	public function hookSubmitRender (HookEvent $event) {
+		$options = '';
+		foreach($this->getActions() as $val => $label) {
+			$options .= '<option value="' . $val . '"' . ($this->adminSaveAction == $val ? 'selected="selected"':'') . '>' . $label . '</option>';
+		}
+		$event->return =
+			$event->return .
+			' + <select name="adminSaveAction">' .
+			$options .
+			'</select>' .
+			$this->renderRememberCheckbox();
+	}
+	
+	/**
+	 * Render a "Remember this setting" checkbox
+	 *
+	 * @return string Markup for the checkbox
+	 * 
+	 */
+	private function renderRememberCheckbox() {
+		return '<label><input type="checkbox" name="adminSaveActionRemember" /> ' . $this->_('Remember this setting') . '</label>';
+	}
+
+	/**
+	 * Hook to replace the original redirect with the chosen one.
+	 * Changes the argument given to Session::redirect to suit the chosen after save action.
+	 *
+	 * @param HookEvent $event Event object to hold the arguments (and other stuff).
+	 *
+	 */
+	public function hookSessionRedirect(HookEvent $event) {
+		// action will be validated using a switch-case
+		$action = $this->input->post->adminSaveAction;
+
+		// try to match the regex from the settings ($m[1] will hold the id on success)
+		if($action && preg_match($this->currentProcess['regexp'], $event->arguments[0], $m)) {
+
+			// take the id
+			$id = $m[1];
+
+			// base url for action
+			$base = $this->config->urls->admin;
+			// add 'setup/' to the base if we're not dealing with pages but fields or templates
+			if($this->currentProcess['type'] != 'page') $base = $base . 'setup/';
+			$base = $base . $this->currentProcess['type'] . '/';
+
+			// saved target: page, field or template
+			$savedTarget = $this->pages->get($id);
+
+			// extract next page id if one present
+			list($action, $nextId) = explode('-', $action);
+
+			switch($action) {
+				case 'list':
+					// go to the page list, opened to show the edited page
+					$url = $base . ($id != 1 && $this->currentProcess['type'] == 'page' ? "?open=$id":"");
+					break;
+				case 'new':
+					// go to the editor for adding a page under same parent the edited page is located at
+					// for templates/fields omit parent_id
+					$url = $base . "add" . ($this->currentProcess['type'] == 'page' ? "/?parent_id={$savedTarget->parent}":"");
+					break;
+				case 'view':
+					// go to the edited page's url, but only if the page is viewable
+					if($savedTarget->viewable()) {
+						$url = $savedTarget->url;
+						break;
+					}
+					// if the page wasn't viewable, fall back to the original behaviour (case edit)
+					// so no 'break' here intentionally!
+					// a message to the user though
+					$this->message($this->_('This page is not viewable - could not execute chosen action.'));
+				case 'edit':
+				case 'next':
+					// change the id if nextId was given ("edit next sibling page")
+					// ...and continue like it was plain old edit
+					if($nextId) $id = $nextId;
+
+					// this is the default (and original) behaviour, stay in the editor
+					// ProcessPage(Edit|Add) needs the slash while Process(Template|Field) can't stand it
+					if($this->currentProcess['type'] == 'page') $url = $base . "edit/?id={$id}";
+					else $url = $base . "edit?id={$id}";
+					break;
+				default:
+					throw new WireException($this->_('Invalid action: ') . $action);
+					break;
+			}
+
+			// remember 'modal'-parameter if one exists
+			if($this->input->get->modal) $url .= "&modal=1";
+
+			// save the action if requested
+			if($this->input->post->adminSaveActionRemember) setcookie($this->cookieName, $action, 0, '/');
+
+			// replace Session::redirect arguments with the one generated here
+			$event->arguments = array($url);
+		}
+	}
+	
+	/**
+	 * Return an InputfieldsWrapper of Inputfields used to configure the class
+	 *
+	 * @param array $data Array of config values indexed by field name
+	 * @return InputfieldsWrapper
+	 *
+	 */
+	public static function getModuleConfigInputfields(array $data) {
+		$wrapper = new InputFieldWrapper();
+		foreach(self::getDefaultConfig() as $key => $value) {
+			if(!isset($data[$key])) $data[$key] = $value;
+		}
+
+		$f = new InputfieldRadios();
+		$f->attr('id+name', 'configInputType');
+		$f->label = __('Input type', __FILE__);
+		$f->description = __('Choose the type of input to use for choosing actions.', __FILE__);
+
+		$f->addOption("radios",   __('Radio buttons in a collapsed container', __FILE__));
+		$f->addOption("dropdown", __('Dropdown after the Save button', __FILE__));
+
+		$f->value = $data['configInputType'];
+
+		$wrapper->add($f);
+
+		$f = new InputfieldText();
+		$f->attr('id+name', 'siblingLimit');
+		$f->label = __('Sibling limit', __FILE__);
+		$f->description = __('Set a reasonable sibling count upper limit for giving "edit next sibling" choice.', __FILE__);
+		$f->value = $data['siblingLimit'];
+		$wrapper->add($f);
+
+		return $wrapper;
+	}
+
+}

@@ -1,0 +1,23 @@
+
+/*
+Example Default styles for TemplateNotes module, to fix ul
+ */
+._TemplateNotes h1{ font-size: 1.8em; }
+
+._TemplateNotes ul,
+._TemplateNotes ol,
+._TemplateNotes dl{
+    padding: 0 0 0 1.5em;
+    margin: 0 0 1.5em 0;
+}
+._TemplateNotes ul li,
+._TemplateNotes ol li{
+    padding: 0 0 0 0;
+    margin: 0 0 0 1.5em;
+    display: list-item;
+}
+
+/* put tab at the right edge of the tabs */
+#_TemplateNotes_tab{
+    /*float:right;*/
+}

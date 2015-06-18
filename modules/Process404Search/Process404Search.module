@@ -1,0 +1,106 @@
+<?php
+
+/**
+ * ProcessWire 404 Search Results Generator
+ * by Adrian Jones
+ *
+ * Redirect 404 pages to search page with terms from failed URL
+ *
+ * ProcessWire 2.x
+ * Copyright (C) 2011 by Ryan Cramer
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ *
+ * http://www.processwire.com
+ * http://www.ryancramer.com
+ *
+ */
+
+class Process404Search extends WireData implements Module, ConfigurableModule {
+
+    public static function getModuleInfo() {
+        return array(
+            'title' => '404 Search Results Generator',
+            'summary' => 'Load search results into 404 page using terms from the failed URL',
+            'href' => 'http://modules.processwire.com/modules/process404-search/',
+            'version' => 13,
+            'autoload' => true,
+            'singular' => true,
+            'icon'     => 'search'
+        );
+    }
+
+
+   /**
+     * Default configuration for module
+     *
+     */
+    static public function getDefaultData() {
+            return array(
+                "searchPage" => ""
+            );
+    }
+
+    /**
+     * Populate the default config data
+     *
+     */
+    public function __construct() {
+       foreach(self::getDefaultData() as $key => $value) {
+               $this->$key = $value;
+       }
+    }
+
+
+    public function init() {
+        $this->addHookAfter('ProcessPageView::pageNotFound', $this, 'search', array('priority'=>1000));
+    }
+
+    public function search($event) {
+        $request = parse_url($_SERVER['REQUEST_URI']);
+        $path = $request["path"];
+        $result = trim(str_replace(basename($_SERVER['SCRIPT_NAME']), '', $path), '/');
+        $term = str_replace(array('-','_','/','%20'),' ',$result);
+
+        // New way of setting the value of get->q directly.
+        // This way, this module can work out of the box with no need to modify the search.php template file
+        $this->input->get->q = $term;
+
+        // Setting the value for $options['q'] in the render is for backwards compatibility
+        // and as a way to identify that this module is rendering the search template so the
+        // dev can choose to output conditional content such as if(isset($options['q'])) $content .= $pages->get(27)->body;
+        $event->return = $this->page->render($this->pages->get($this->searchPage)->template->filename, array('q' => $term));
+    }
+
+
+    public static function getModuleConfigInputfields(array $data) {
+
+        $data = array_merge(self::getDefaultData(), $data);
+
+        $form = new InputfieldWrapper();
+
+        $fieldset = wire('modules')->get('InputfieldFieldset');
+        $fieldset->label = '404 Search Results Generator';
+        $fieldset->description = 'To make this module work, the only requirement is that you select your site\'s Search page below.
+
+        Optionally, you might like to add the following to your "404 Page Not Found" page\'s body field.
+
+        if(isset($options[\'q\'])) $content .= $pages->get(27)->body;
+
+        That will add the content of your 404 page\'s body field to the top of the search results (27 is the ID of the PW 404 page). You might like to populate that field with something like:
+
+        <h3>The page you were looking for is not found.</h3>
+        <p>We have tried to find the content you were looking for, but if we didn\'t get it right, please use our search engine or navigation above to find the page.</p>';
+
+        $f = wire('modules')->get("InputfieldPageListSelect");
+        $f->name = 'searchPage';
+        $f->label = 'Search Page';
+        $f->required = true;
+        $f->attr('value', $data["searchPage"]);
+        $f->description = "Select your site's search page.";
+        $fieldset->add($f);
+
+        $form->add($fieldset);
+        return $form;
+    }
+
+}

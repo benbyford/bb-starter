@@ -1,0 +1,222 @@
+<?php
+
+/**
+ * ProcessPageDelete
+ *
+ * By Nico Knoll (http://nico.is/)
+ *
+ */
+
+class ProcessPageDelete extends Process implements ConfigurableModule {
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => __('Page Delete'),
+			'version' => '1.2.4',
+			'summary' => __('Adds a delete/trash link to the page list.'),
+			'permission' => 'page-delete',
+			'autoload' => 'process=ProcessPageList'
+		);
+	}
+
+
+	/**
+	 * Default configuration
+	 *
+	 */
+	static public function getDefaultConfig() {
+		return array(
+			'action' => 'trash' // trash or delete
+		);
+	}
+
+
+	/**
+	 * Populate default configuration (will be overwritten after constructor with user's own configuration)
+	 *
+	 */
+	public function __construct() {
+		foreach(self::getDefaultConfig() as $key => $value) {
+			$this->$key = $value;
+		}
+	}
+
+
+	/**
+	* Initializing the module and adding javascript
+	*
+	*/
+	public function init() {
+
+		parent::init();
+
+		//  add the hooks
+		$this->addHookAfter("ProcessPageListRender::getPageActions", $this, 'hookPageListActions');
+		$this->addHookAfter('ProcessPageList::execute', $this, 'addJavascript');
+
+		// add language to javascript
+		$this->config->js('ProcessPageDelete', array(
+			'sure' => __("Are you sure?")
+		));
+	}
+
+
+	/**
+	* The hook function
+	*
+	*/
+	public function hookPageListActions(HookEvent $event) {
+		$page = $event->arguments[0];
+
+		if($page->deleteable() && wire('config')->demo == false && $page->rootParent != wire('pages')->get('/trash/') && $page->rootParent != wire('pages')->get($this->config->adminRootPageID)) {
+
+			$actions = $event->return;
+
+			$new_action = array(
+				'cn' => 'delete',
+				'url' => $this->config->urls->admin . "page/delete/?id={$page->id}"
+			);
+
+			if($this->action == 'trash') {
+				$new_action['name'] = __('Trash');
+			} else {
+				$new_action['name'] = __('Delete');
+			}
+
+			$actions = $this->array_insert($actions, ((int) count($actions)-1), $new_action);
+
+			$event->return = $actions;
+		}
+	}
+
+
+	/**
+	* Adding Javascript manually because this module is an autoload module and javascript
+	* would be added before jquery if i would use the normal $config->script->add().
+	*/
+
+	public function addJavascript(HookEvent $event) {
+		// js path
+
+		if($this->config->ajax) return; // so it only gets added on first time markup output
+
+		$class = $this->className();
+		$info = $this->getModuleInfo();
+		$version = (int) $info['version'];
+		$path = $this->config->urls->$class . "ProcessPageDeleteCheck.js?v=$version";
+
+		$event->return .= '<script type="text/javascript" src="'.$path.'"></script>';
+	}
+
+
+
+	/**
+	* Execute function (deletes or trashes the page)
+	*
+	*/
+	public function ___execute() {
+		$page = $this->pages->get((int) $this->input->get->id);
+		if(!$page->deleteable() || wire('config')->demo == true) throw new WirePermissionException($this->_("You don't have access to delete that page."));
+
+		$parent_id = $page->parent_id;
+		$path = $page->url;
+
+		if($this->action == 'trash') {
+			$this->pages->trash($page);
+			$this->message(sprintf($this->_("Moved page to trash: %s"), $path));
+		} else {
+			$this->pages->delete($page, true);
+			$this->message(sprintf($this->_("Deleted page: %s"), $path));
+		}
+
+
+		$this->session->redirect("../?open={$parent_id}");
+	}
+
+
+
+	/**
+	 * Create the modules setting page
+	 *
+	 */
+	static public function getModuleConfigInputfields(array $data) {
+
+		// this is a container for fields, basically like a fieldset
+		$fields = new InputfieldWrapper();
+
+		// since this is a static function, we can't use $this->modules, so get them from the global wire() function
+		$modules = wire('modules');
+
+		// merge default config settings (custom values overwrite defaults)
+		$defaults = self::getDefaultConfig();
+		$data = array_merge($defaults, $data);
+
+		// sender name
+		$field = $modules->get("InputfieldRadios");
+		$field->name = "action";
+		$field->label = "Action";
+		$field->description = "Choose if a page should be trashed or deleted directly.";
+		$field->addOption('delete', 'Delete');
+		$field->addOption('trash', 'Trash');
+		$field->value = $data['action'];
+		$fields->add($field);
+
+		return $fields;
+	}
+
+
+
+	/**
+	* Install
+	*
+	*/
+	public function ___install() {
+
+		if(ProcessWire::versionMajor == 2 && ProcessWire::versionMinor < 2) {
+			throw new WireException($this->_("This module requires ProcessWire 2.2 or newer"));
+		}
+
+		// create "delete" page
+		$parent = $this->pages->get("name=page,parent=".$this->config->adminRootPageID);
+
+		$page = new Page();
+		$page->parent = $parent;
+		$page->template = $this->templates->get('admin');
+		$page->name = "delete";
+		$page->title = "Delete Page";
+		$page->process = $this;
+		$page->status = Page::statusHidden;
+		$page->sort = $parent->numChildren;
+		$page->save();
+
+		// success message
+		$this->message(sprintf($this->_("Installed to %s"), $page->path));
+	}
+
+	/**
+	* Uninstall
+	*
+	*/
+	public function ___uninstall() {
+		$parent = $this->pages->get("name=page,parent=".$this->config->adminRootPageID);
+		$page = $parent->child("name=delete,include=hidden");
+
+		if($page->id) {
+			$this->message(sprintf($this->_("Removed %s"), $page->path));
+			$this->pages->delete($page);
+		}
+	}
+
+
+	/**
+	* Helper: Inserting a value into an array
+	*
+	*/
+	private function array_insert($array, $pos, $val) {
+	   $array2 = array_splice($array,$pos);
+	   $array[] = $val;
+	   $array = array_merge($array,$array2);
+
+	   return $array;
+	}
+}

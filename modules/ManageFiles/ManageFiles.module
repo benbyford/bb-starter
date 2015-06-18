@@ -1,0 +1,252 @@
+<?php
+
+class ManageFiles extends Process implements Module {
+
+	/**
+	 * getModuleInfo is a module required by all modules to tell ProcessWire about them
+	 *
+	 */
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'Site-wide File Manager', 
+			'version' => '1.08', 
+			'summary' => 'Let you easily manage all of your uploaded files.',
+			'singular' => true, 
+			'autoload' => false, 
+			);
+	}
+
+	/**
+	 * Name used for the page created in the admin
+	 *
+	 */
+	const adminPageName = 'manage-files';
+
+
+	/**
+	 * Initialize the module
+	 *
+	 */
+	public function init() {
+		parent::init();
+		ini_set('auto_detect_line_endings', true);
+		
+	}
+
+	/**
+	 * Executed when root url for module is accessed
+	 *
+	 */
+	public function ___execute() {
+
+		$this->modules->get("JqueryFancybox");
+		
+		$table = $this->modules->get('MarkupAdminDataTable');
+		$table->setSortable(true); 
+		$table->setEncodeEntities(false);
+		$header = array('Preview','Name','Size','on Page','Link&emsp;','Delete');
+		$table->headerRow($header);
+		
+		// get all templates that have 1 or more file fields
+		$filetemplates = array();
+		foreach($this->templates as $template) {
+			foreach($template->fields as $field){
+				if( $field->type instanceof FieldtypeFile) {
+					$filetemplates[] = $template->name;
+				}
+			}
+		}
+
+		// we get all pages using these templates
+
+		$fields = $this->fields->find('type=FieldtypeFile|FieldtypeImage')->getArray();
+		$pages = $this->pages->find(implode('|', $fields) . ">0, sort=-modified, limit=10"); 
+
+
+		if(count($pages)) {
+			
+			foreach($pages as $page) {
+			
+				foreach($page->fields as $field) {
+					
+					if($field->type instanceof FieldtypeImage) {
+						$file = $page->get($field->name);
+					
+						if($file){
+							foreach($file as $f) {
+								$table->row(array(
+									// make preview size with configurable module
+									'<a class="fancybox" href="'.$f->url.'"><img src="'.$f->size(100,0)->url.'"/></a>',
+									basename($f->url).'&emsp;',
+									'<nobr style="text-align:right;float:right;">'.((round(($f->get('filesize')/1024)/1024,2) < 0.01) ? '< 0.01' : round(($f->get('filesize')/1024)/1024,2)).' MB &emsp;</nobr>',
+								 	'<a target="blank" href="'.$page->url.'">'.$page->get("title|name").'</a>',
+								 	
+									'<a target="blank" href="'.$f->url.'">Link</a>',
+									'<input type="checkbox" name="delete[]" style="margin-left:15px;float:left;margin-top:5px;" value="'.$page->id.'|'.$field->name.'|'.$f->name.'" />'
+								));	
+							}
+					
+						}
+					
+					}
+					if($field->type instanceof FieldtypeFile && !$field->type instanceof FieldtypeImage) {
+						$file = $page->get($field->name);
+					
+						if($file){
+							foreach($file as $f) {
+								$table->row(array(
+									'<a class="fancybox_iframe" href="'.$f->url.'">'.basename($f->url).'</a>',
+									basename($f->url).'&emsp;',
+									
+									'<nobr style="text-align:right;float:right;">'.((round(($f->get('filesize')/1024)/1024,2) < 0.01) ? '< 0.01' : round(($f->get('filesize')/1024)/1024,2)).' MB &emsp;</nobr>',
+								 	'<a target="blank" href="'.$page->url.'">'.$page->get("title|name").'</a>',
+								 	
+									'<a target="blank" href="'.$f->url.'">Link</a>',
+									'<input type="checkbox" name="delete[]" style="margin-left:15px;float:left;margin-top:5px;" value="'.$page->id.'|'.$field->name.'|'.$f->name.'" />'
+								));	
+							}
+					
+						}
+					
+					}
+					
+				} 
+			
+			
+			
+			}
+		}
+		
+		
+		$pager = $this->modules->get("MarkupPagerNav");
+		
+		$button = $this->modules->get("InputfieldButton");
+		$button->type = 'submit';
+		$button->id = 'submit_delete';
+		$button->value = 'Delete selected file/files';
+		
+		//$table->action(array('Add language' => 'edit/?id=0'));
+		$scripts = <<<_END
+		<script>
+			$(function(){
+				$('.fancybox').fancybox();
+				$('.fancybox_iframe').fancybox({'type':'iframe'});
+			});
+		</script>		
+_END;
+
+		return '<form id="form" action="./delete/" method="post">' . $pages->renderPager()  .$table->render() . $button->render() . '</form>'.$scripts;
+	}
+
+	/**
+	 * Delete the file(s)
+	 *
+	 */
+	
+	public function ___executeDelete() {
+		
+		$this->fuel('breadcrumbs')->add(new Breadcrumb('../', 'Files')); 
+		
+		$this->setFuel('processHeadline', "Delete File");
+		
+		$files = $this->input->post['delete'];
+
+		foreach($files as $file) {
+			
+			list($pid, $fieldname, $filename) = explode("|", $file);
+			
+			$page = $this->pages->get($pid);
+			$pagefiles = $page->get($fieldname);
+			
+			foreach($pagefiles as $f) {
+				if($f->basename == $filename) {
+					foreach($f->page->getInputfields() as $field) {
+						if($field == 'InputfieldImage' || $field == 'InputfieldFile') {
+							foreach($f->page->get($field->name) as $file_object) {
+								if((string)$file_object == $f) {
+									$f->page->get($field->name)->delete($file_object);
+								}
+							}
+						}
+					}
+					$page->save();
+					$this->message('"'.$filename.'" successfully deleted.');
+				}
+			
+			}
+			
+		
+		}
+		
+		$this->session->redirect('../');
+	}
+	
+	
+	/**
+	 * Return a list of the uploaded files
+	 *
+	 */
+	protected function getFiles($pattern = '*', $flags = 0, $path = '') {
+	    $paths = glob($path.'*', GLOB_MARK|GLOB_ONLYDIR|GLOB_NOSORT);
+	    $files = ((glob($path.$pattern, $flags)) ? glob($path.$pattern, $flags) : array());
+	    foreach ($paths as $path) {
+	        $files = array_merge($files, $this->getFiles($pattern, $flags, $path));
+	    }
+	    return $files;
+	}
+
+	/**
+	 * Install the module and create the page where it lives
+	 *
+	 */
+	public function ___install() {
+
+		if(ProcessWire::versionMajor == 2 && ProcessWire::versionMinor < 1) {
+			throw new WireException("This module requires ProcessWire 2.1 or newer"); 
+		}
+
+		$page = $this->getInstalledPage();
+		$this->message("Installed to {$page->path}"); 
+	}
+
+	protected function getInstalledPage() {
+
+		$admin = $this->pages->get($this->config->adminRootPageID); 
+		$parent = $admin->child("name=admin"); 
+		if(!$parent->id) $parent = $admin;
+		$page = $parent->child("name=" . self::adminPageName); 
+
+		if(!$page->id) { 	
+			$first = $admin->child();
+		
+			$page = new Page();
+			$page->parent = $admin; 
+			$page->template = $this->templates->get('admin');
+			$page->name = self::adminPageName; 
+			$page->title = "Files";
+			$page->process = $this; 
+			$page->sort = $first->sort;
+			$page->save();
+			
+			$first->sort--;
+			$first->save(); 
+		}
+
+		return $page; 	
+	}
+
+
+	/**
+	 * Uninstall the module
+	 *
+	 */
+	public function ___uninstall() {
+		$page = $this->getInstalledPage();	
+		if($page->id) { 
+			$this->message("Removed {$page->path} successfully.");
+			$this->pages->delete($page); 
+		}
+	}
+	
+}
+?>

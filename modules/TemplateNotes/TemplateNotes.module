@@ -1,0 +1,121 @@
+<?php
+
+/**
+ * Template Help Tab Notes
+ *
+ *
+ * Adds a "Help" tab to pages
+ * You can add content by simply putting a [tplname].html or [tplname].md file in /templates/notes/
+ *
+ *
+ * ProcessWire 2.x
+ * Copyright (C) 2010 by Ryan Cramer
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ *
+ * http://www.processwire.com
+ * http://www.ryancramer.com
+ *
+ */
+
+class TemplateNotes extends WireData implements Module, ConfigurableModule {
+
+    /**
+     * getModuleInfo is a module required by all modules to tell ProcessWire about them
+     *
+     * @return array
+     *
+     */
+    public static function getModuleInfo() {
+
+        return array(
+            'title' => 'Template Notes',
+            'version' => 103,
+            'author' => 'soma',
+            'summary' => 'Renders a "Help" tab on pages with infos for the current used template. The content is loaded from /site/templates/notes/. You can add [tplname].html or [tplname].md files.',
+            'href' => 'http://processwire.com/talk/topic/5019-template-notes/',
+            'singular' => true,
+            'autoload' => "template=admin",
+            );
+    }
+
+    /**
+     * Initialize the module
+     *
+     * ProcessWire calls this when the module is loaded. For 'autoload' modules, this will be called
+     * when ProcessWire's API is ready. As a result, this is a good place to attach hooks.
+     *
+     */
+    public function init() {
+        // hook the form on page edit
+        $this->addHookAfter('ProcessPageEdit::buildForm', $this, 'hookPageEdit');
+    }
+
+
+    /**
+     * Add "Help" tab to pages with template notes if found
+     * in /site/templates/notes/
+     *
+     */
+    public function hookPageEdit(HookEvent $event) {
+        $page = $event->object->getPage();
+        $form = $event->arguments("form");
+
+        $template = $page->template->name;
+        $path = $this->config->paths->templates;
+
+        if(file_exists($path . "notes/$template.html")){
+            $value = file_get_contents($path . "notes/$template.html");
+        } else if(file_exists($path . "notes/$template.md")) {
+            $value = file_get_contents($path . "notes/$template.md");
+            $this->modules->TextformatterMarkdownExtra->formatValue(new Page(), new Field(), $value);
+        } else {
+            return;
+        }
+
+        // add styles since admin theme has no proper html styles (!)
+        if($this->custom_css){
+            if(file_exists($this->config->paths->root . $this->custom_css)) {
+                $this->config->styles->add($this->config->urls->root . $this->custom_css);
+            } else {
+                throw new WireException("{$this->config->urls->root}{$this->custom_css} not found. Make sure the file exists.");
+            }
+        } else {
+            $this->config->styles->add($this->config->urls->TemplateNotes . "TemplateNotes.css");
+        }
+
+        // create a new tab
+        $tab = new InputfieldWrapper();
+        $tab->attr('title', $this->_x('Help', 'tab'));
+        $tab->attr('class', 'WireTab');
+        $tabId = $this->className() . "_tab";
+        $tab->attr('id', $tabId);
+        $markup = $this->modules->get('InputfieldMarkup');
+        $markup->value = "<div class='_TemplateNotes'>$value</div>";
+        $markup->label = $this->_x('Help', 'tab'); // add and hide a label to get rid of space at top
+        $markup->skipLabel = Inputfield::skipLabelHeader;
+        $tab->add($markup);
+
+        if(ProcessWire::versionMajor == 2 && ProcessWire::versionMinor <= 4)
+            $form->append($tab);
+
+        if(ProcessWire::versionMajor >= 2 && ProcessWire::versionMinor >= 5)
+            $form->prepend($tab);
+
+    }
+
+    public static function getModuleConfigInputfields(array $data) {
+        // yet empty
+        $inputfields = new InputfieldWrapper();
+
+        $f = wire("modules")->InputfieldText;
+        $f->attr("name", "custom_css");
+        $f->description = wire()->_("Add custom css file to style content of help text. Enter without leading slash, as it will append root automatic in case PW is installed in a subfolder.");
+        $f->notes = wire()->_("Example: site/templates/notes/notes.css");
+        $f->attr("value", isset($data['custom_css']) ? $data['custom_css'] : '' );
+        $inputfields->add($f);
+
+        return $inputfields;
+
+    }
+
+}

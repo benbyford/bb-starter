@@ -1,0 +1,88 @@
+<?php
+
+/**
+ * PageTreeAddNewChildsReverse
+ * @author  horst
+ *
+ * ProcessWire 2.x
+ * Copyright (C) 2010 by Ryan Cramer
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ *
+ * http://www.processwire.com
+ *
+ */
+
+class PageTreeAddNewChildsReverse extends Process implements ConfigurableModule {
+
+	const permanentValue = "";
+
+	private $startvalue = 999999999;
+	
+	public static function getModuleInfo() {
+		return array(
+			'title'     => 'Pagetree Add New Childs Reverse',
+			'version'   => 102,
+			'summary'   => "New Pages in Descending Sortorder (newest first) while sortmode is Manual Drag-n-Drop",
+			'href'      => 'http://mods.pw/5g',
+			'author'    => 'horst',
+			'singular'  => true,
+			'autoload'  => true,
+			#'permanent' => true
+		);
+	}
+
+	public static function getModuleConfigInputfields(array $data) {
+		if(! isset($data['sort_reverse']) || empty($data['sort_reverse'])) $data['sort_reverse'] = self::permanentValue;
+		$fields = new InputfieldWrapper();
+		$f = wire('modules')->get('InputfieldTextarea');
+		$f->attr('name', 'sort_reverse');
+		$f->attr('rows', 3);
+		$f->attr('value', $data['sort_reverse']);
+		$f->label = 'Reverse added Childpages, newest first!';
+		$f->description = 'Enter Templatename or Page-ID of the Parent which Children should reverse added, - optionaly followed by a colon and the Childtemplatename. You can add as many Parents as you like, but only one on each line and in this format: TEMPLATE or PAGEID[,CHILDTEMPLATE]. Few examples: "newsitems" or "posts,post" or "1042" or "1042,album" - (without Quotes and Doublequotes)';
+		$fields->append($f);
+		return $fields;
+	}
+
+	public function init() {
+		$this->addHookAfter('Pages::setupNew', $this, 'HookPagesSetupNew');
+		$s = str_replace(array("\r\n","\r"), "\n", trim($this->sort_reverse));
+		$tmp = explode("\n",$s);
+		$reverses = array();
+		foreach($tmp as $v) {
+			if(''==trim($v)) continue;
+			$a = explode(',', trim($v));
+			foreach($a as $key=>$val) $a[$key] = trim($val);
+			$reverses[$a[0]] = isset($a[1]) ? $a[1] : '';
+		}
+		$this->treeRoots = $reverses;
+	}
+
+	public function getTreeRoots() {
+		return isset($this->treeRoots) && is_array($this->treeRoots) ? $this->treeRoots : array();
+	}
+	
+	public function HookPagesSetupNew($event) {
+		$page = $event->arguments[0];
+		if(! in_array($page->parent->template->name, array_keys($this->treeRoots)) && ! in_array($page->parent->id, array_keys($this->treeRoots))) {
+			return;
+		}
+		foreach($this->treeRoots as $treeRoot => $childTemplate) {
+			if(is_numeric($treeRoot) && $page->parent->id != intval($treeRoot)) {
+				continue;
+			}
+			if(! is_numeric($treeRoot) && $page->parent->template->name != $treeRoot) {
+				continue;
+			}
+			if(! empty($childTemplate) && $page->template->name != $childTemplate) {
+				continue;
+			}
+			$firstchild = $page->parent->child('include=all');
+			$page->sort = 0==$firstchild->id ? $this->startvalue : $firstchild->sort - 1;
+			$event->return = $page;
+			break;
+		}
+	}
+
+}
+
