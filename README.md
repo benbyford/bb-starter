@@ -13,6 +13,13 @@ Home
 
 
 
+#### Home page includes some setup fields for meta tags within the site:
+
+i.e. Twitter profile, Facebook profile URL, Keywords and Summary for site, 
+
+
+
+
 ### This profiles includes modules:
 
 AdminSaveActsion
