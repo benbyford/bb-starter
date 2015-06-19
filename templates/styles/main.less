@@ -1,4 +1,6 @@
 /**
+ * Created by Ben Byford
+ *
  * main.css
  *
 	Variables
@@ -15,6 +17,22 @@
 * Variables
 *
 */
+
+@margin: 1em;
+@padding: 0.6em;
+
+@font-size: 1em;
+
+@grey: #aaaaaa;
+@blue: #259ad6;
+@table-color: #ddd;
+
+@small-screen: 460px;
+@medium-screen: 786px;
+@big-screen: 920px;
+@large-screen: 1260px;
+@max-screen: 1400px;
+
 
 /*********************************************************************
 * General HTML tags
@@ -37,7 +55,6 @@
 
 body {
 	padding: 5%;
-	max-width: 1600px;
 	margin: 0 auto;
 }
 
@@ -50,32 +67,43 @@ body, td, input[type=text], textarea {
 
 img { max-width: 100%; }
 
-h1 { font-weight: normal; }
-h2 { font-weight: normal; }
-h3 {
-	border-top: 1px solid #eee;
-	padding-top: 1em;
-	color: #777;
+h1, h2, h3, h4, h5, h6{
+  line-height: 120%;
+  word-break: keep-all;
 }
-h4 { font-weight: normal; }
-
-a {
-	color: #333;
-	text-decoration: none;
-	border-bottom: 1px solid #ccc;
+h1{ font-size: 2em; margin: @margin*0.4 0; }
+h2{ font-size: 1.6em; margin: @margin*1.8 0; }
+h3{ font-size: 1.4em; margin: @margin*1.6 0; }
+h4{ font-size: 1.25em; margin: @margin*1.5 0; }
+h5{ font-size: 1.1em; margin: @margin*1.4 0; }
+h6{
+  color: #ccc;
+  margin-bottom: @margin;
 }
-	a:hover{
-		color: #000;
-		border-color: #aaa;
-	}
 
-blockquote {
-	margin-left: 0;
-	padding-left: 1.5em;
-	padding-right: 2em;
-	border-left: 4px solid #ddd;
-	font-style: italic;
-	color: #777;
+
+a{
+  color: @blue;
+  word-break: break-all;
+
+  &:visited{ color: @blue*1.2; }
+  &:hover{ color: @blue*.8; }
+  &:active,
+  &:focus{ color: @blue*1.6; }
+}
+
+blockquote{
+  font-size: 110%;
+  line-height: 160%;
+  padding: 6%;
+  margin: @margin*1.5 0;
+  font-family: georgia, serif;
+  border-left: 5px solid @blue;
+  background: #eee;
+
+    p:last-child{
+        marign: none;
+    }
 }
 
 pre, code {
@@ -201,6 +229,18 @@ form.search {
  *
  */
 
+#page {
+  width: 100%;min-width: 320px;max-width: 1600px;
+  margin: 0 auto;
+}
+
+.container{
+  margin: 0 auto;
+  padding-left: 0em;
+
+  @media all and (min-width: @medium-screen){ padding-left: 5em; }
+}
+
 #main {
 	border-top: 1px solid #eee;
 	padding-top: 1em;
@@ -210,6 +250,7 @@ form.search {
 
 #content {
 	width: 85%;
+	max-width: @large-screen;
 }
 
 #content, #sidebar {
@@ -311,33 +352,32 @@ body.has-sidebar #sidebar {
 .cf:after { clear: both; }
 .cf { *zoom: 1; }
 
+.hide{ display: none; }
+
+.no-opacity{ opacity: 0; }
+
+.opacity{ opacity: 1; }
+
+.absolute{ position: absolute; }
+
+.full-width{
+  width:100%;
+}
 
 /* ==========================================================================
 Print styles
 ========================================================================== */
 
 @media print {
-	* {
-		background: transparent !important;
-		color: #000 !important;
-		box-shadow: none !important;
-		text-shadow: none !important;
-	}
-
+	* { background: transparent !important; color: #000 !important; box-shadow: none !important; text-shadow: none !important; }
 	a, a:visited { text-decoration: underline; }
 	a[href]:after { content: " (" attr(href) ")"; }
 	abbr[title]:after { content: " (" attr(title) ")"; }
-
 	.ir a:after, a[href^="javascript:"]:after, a[href^="#"]:after { content: ""; }
-
-	pre,
-	blockquote { border: 1px solid #999; }
+	pre, blockquote { border: 1px solid #999; }
 	thead { display: table-header-group; }
 	img { max-width: 100% !important; }
 	@page { margin: 0.5cm; }
-
-	p,
-	h2,
-	h3 { orphans: 3; widows: 3; }
+	p, h2, h3 { orphans: 3; widows: 3; }
 	pre, blockquote, h2, h3, tr, img { page-break-after: avoid; }
 }

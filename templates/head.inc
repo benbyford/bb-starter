@@ -27,7 +27,7 @@
     <!-- // open graph // -->
     <meta property="og:site_name" content="<?php echo $homepage->title; ?>">
     <meta property="og:type" content="website"><!--product, blog, website, book, movie, game, actor, see http://ogp.me/#types-->
-    
+
     <meta property="og:image" content="<?php echo $page->images->getRandom()->url; ?>"> <!--multiple og:image permitted-->
     <meta property="og:title" content="<?php echo $title; ?>"> <!--title-->
     <meta property="og:description" content="<?php echo $summary; ?>"> <!--summary-->
@@ -47,6 +47,6 @@
     <link href='<?php echo $config->urls->templates?>styles/font-awesome.css' rel='stylesheet' type='text/css'>
 
     <!-- // minified styles -->
-    <link rel="stylesheet" href="<?php echo AIOM::CSS(array('styles/html.less','styles/main.less')); ?>">
+    <link rel="stylesheet" href="<?php echo AIOM::CSS(array('styles/font-awesome.css','styles/main.less')); ?>">
 </head>
 <body class="<?php if($sidebar) echo "has-sidebar "; ?>">
