@@ -7,14 +7,18 @@ To make this module work, the only requirement is that you select your site's Se
 
 Optionally, you might like to add the following to your search.php file.
 ```
-if(isset($options['q'])) $content .= $pages->get(27)->body;
+if(isset($options['q'])) $content .= $pages->get($config->http404PageID)->body;
 ```
-This will add the content of your 404 page's body field to the top of the search results (27 is the ID of the PW 404 page). You might like to populate that field with something like:
+This will add the content of your 404 page's body field to the top of the search results. You might like to populate that field with something like:
 
 ```
 <h3>The page you were looking for is not found.</h3>
 <p>We have tried to find the content you were looking for, but if we didn't get it right, please use our search engine or navigation above to find the page.</p>
 ```
+
+####Support forum:
+http://processwire.com/talk/topic/5724-404-search-module/
+
 
 ## License
 

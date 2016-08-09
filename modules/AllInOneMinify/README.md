@@ -161,6 +161,32 @@ If you are currently in development of the site, caching can be a problem. For t
 
 ##Changelog##
 
+3.2.3
+
+* Typo fix in variable (Tanks to SteveB)
+
+3.2.2
+
+* Security Fix: CHMOD ([#44](https://github.com/conclurer/ProcessWire-AIOM-All-In-One-Minify/issues/44))
+* Bugfix: MD5 hash with many files ([#46](https://github.com/conclurer/ProcessWire-AIOM-All-In-One-Minify/issues/46))
+* Improvement in the detection of file changes
+
+3.2.1
+
+* Bugfix: $config->scripts was not included properly
+* Support for @-webkit-keyframes added
+
+3.2
+
+* New CSS Compressor: AIOM now uses YUI Compressor (thanks to hwmaier)
+* You can now use $config->scripts and $config->styles in AIOM ([#31](https://github.com/conclurer/ProcessWire-AIOM-All-In-One-Minify/issues/31))
+* Bugfix: Empty {} brackets will only be partly removed ([#23](https://github.com/conclurer/ProcessWire-AIOM-All-In-One-Minify/issues/23))
+* Bugfix: CSS pseudo classes will be compressed incorrectly ([#33](https://github.com/conclurer/ProcessWire-AIOM-All-In-One-Minify/issues/33))
+
+3.1.5
+
+* Bugfix: Links to images, which are embedded in CSS, are broken if the DOCUMENT_ROOT is not equal to ProcessWire root. 
+
 3.1.4
 
 * Bugfix: CacheFiles for Pages are now deleted when a new minimized file is created
