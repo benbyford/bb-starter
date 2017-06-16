@@ -1,6 +1,6 @@
 <?php if(!defined("PROCESSWIRE_INSTALL")) die();
 $info = array(
-	'title' => "bb-starter", 
+	'title' => "BB Starter", 
 	'summary' => "BB starter profile for prcoesswire - https://github.com/benbyford/bb-starter", 
-	'screenshot' => "screenshot_2015-06-19_12_34_01.png"
+	'screenshot' => "screenshot_2017-06-16_11_43_24.png"
 	);

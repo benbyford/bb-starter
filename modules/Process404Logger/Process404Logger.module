@@ -1,0 +1,160 @@
+<?php
+
+/**
+ * Process 404 Logger
+ * by kixe
+ *
+ * Logs all requests resulting in http error 404
+ *
+ * 
+ * made by kixe (Christoph Thelen) 20.04.15
+ * Licensed under GNU/GPL v3
+ * 
+ * ProcessWire 2.x 
+ * Copyright (C) 2015 by Ryan Cramer 
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ * 
+ * http://processwire.com
+ *
+ */
+
+class Process404Logger extends Process implements ConfigurableModule {
+
+    public static function getModuleInfo() {
+        return array(
+            'title' => '404 Logger',
+            'summary' => __('Logs all requests resulting in http error 404'),
+            'href' => '',
+            'author' => 'kixe',
+            'version' => 106,
+            'autoload' => true,
+            'singular' => true,
+            'icon'     => 'warning'
+        );
+    }
+
+    static public function getDefaultConfig() {
+        return array(
+            'log_ua' => false,
+            'log_ip' => 0
+        );
+    }
+
+    public function __construct() {
+        foreach(self::getDefaultConfig() as $key => $value) {
+            $this->$key = $value;
+        }
+    }   
+
+    public function init() {
+        $this->addHookAfter('ProcessPageView::pageNotFound', $this, 'log');
+    }
+
+    /*
+     * 
+     * @return logfile entry.
+     *
+     */
+    public function log(HookEvent $event) {
+
+        $user = $this->wire('user');
+        $eid = $this->wire('config')->http404PageID;
+        $uid = $this->wire('user')->id;
+        $module = $this->wire('modules')->get('Process404Logger');
+
+        $page = $event->arguments[0];
+        $request = $event->arguments[1];
+
+        /*
+            $trashpages = $this->wire('pages')->find("status=trash");
+            foreach($trashpages as $trashpage) {
+                if (trim($request,'/') == substr(strstr($trashpage->name,'_'),1)) {
+                    $page = $trashpage;
+                    break;
+                }
+            }
+        */
+
+        $info = "unknown cause";
+        $pid = $page->id;
+        if ($pid) {
+            if ($pid == $eid) return; // don't log if error page is called directly
+            if (!$page->template->filenameExists()) $info = "missing template file [$pid]";
+            // if ($page->status>8192) $info = "trashed [$pid]";
+            else if ($page->status>2048) $info = "unpublished [$pid]";
+            else if ($page->viewable() == false) $info = "view not permitted [$pid]";
+            // if urlsegments are allowed and templatefile throws Wire404Exception()
+            else if ($request != $page->url) $info = "request doesn't equal \$page->url '$page->url' [$pid]";
+        }
+        // elseif (wire('pages')->get("id=$trashid,status>8192,include=all")->id) "trashed page found [$trashid]";
+        else $info = 'page doesn\'t exist';
+
+        $filename = $this->wire('log')->getFilename('pagenotfound'); // only lowercase letters to stay compatible with ProcessLogger
+        $log = new FileLog($filename);
+        $log->setDelimeter("\t");
+
+        // $log->pruneBytes(200000);
+        // for backward compatibility
+        method_exists($log,'pruneBytes')?$log->pruneBytes(200000):$log->prune(200000);
+
+        // add IP and UA to log entry
+        switch ($module->log_ip) {
+            case 0:
+                $ip = '';
+                break;
+            case 1:
+                $ip = explode('.',$this->wire('session')->getIP());
+                $ip = $ip[0].'.xxx.xxx.xxx';
+                break;
+            case 2:
+                $ip = explode('.',$this->wire('session')->getIP());
+                $ip = "$ip[0].$ip[1].xxx.xxx";
+                break;
+            case 3:
+                $ip = explode('.',$this->wire('session')->getIP());
+                $ip = "$ip[0].$ip[1].$ip[2].xxx";
+                break;
+            case 4:
+                $ip = $this->wire('session')->getIP();
+                break;
+        }
+        
+        $br = ($module->log_ua && isset($_SERVER['HTTP_USER_AGENT']))?" [UA: ".$_SERVER['HTTP_USER_AGENT']."]":'';        
+        if (strlen($ip)) $ip = " [IP: $ip]";
+
+        $log->save("$uid\t{$request}\t$info$ip$br");
+    }
+
+    /**
+     * module settings
+     *
+     */
+    static public function getModuleConfigInputfields(array $data) {
+
+        $fields = new InputfieldWrapper();
+        $defaults = self::getDefaultConfig();
+        $data = array_merge($defaults, $data);
+        $modules = wire('modules');
+
+        $f = $modules->get("InputfieldRadios");
+        $f->label = __("Log IP Address");
+        $f->attr('name', 'log_ip');
+        $f->attr('value', $data['log_ip']);
+        $f->description = __('Write IP Address in log file. Determine which octets are to be blured (255.255.xxx.xxx)');
+        $f->addOption(0,"not");
+        $f->addOption(1, __("blur last 3 octets"));
+        $f->addOption(2, __("blur last 2 octets"));
+        $f->addOption(3, __("blur last octet"));
+        $f->addOption(4, __("complete"));
+        $fields->add($f);
+
+        $f = $modules->get('InputfieldCheckbox');
+        $f->attr('name', 'log_ua'); 
+        $f->label = __('Log User Agent'); 
+        $f->attr('checked', $data['log_ua'] ? 'checked' : '' );
+        $f->notes = __('logs user agent if $_SERVER[\'HTTP_USER_AGENT\'] is set');
+        $fields->add($f);
+
+        return $fields;
+    }
+}

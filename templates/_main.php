@@ -45,11 +45,6 @@
 		?>
 	</div>
 
-	<form class='search' action='<?php echo $pages->get('template=search')->url; ?>' method='get'>
-		<input type='text' name='q' placeholder='<?php echo _x('Search', 'placeholder'); ?>' />
-		<button type='submit' name='submit'><?php echo _x('Search', 'button'); ?></button>
-	</form>
-
 
 	<div id='main'>
 

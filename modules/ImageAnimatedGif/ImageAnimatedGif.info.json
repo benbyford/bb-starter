@@ -1,0 +1,11 @@
+{
+    "title": "Image Animated GIF",
+    "summary": "This module helps with resizing and cropping of animated GIFs when using GD-Lib",
+    "version": 201,
+    "author": "Horst Nogajski",
+    "href": "https://processwire.com/talk/topic/8386-image-animated-gif/",
+    "icon": "crop",
+    "requires": "ProcessWire>=2.5.3, PHP>=5.3.8",
+    "singular": true,
+    "autoload": true
+}

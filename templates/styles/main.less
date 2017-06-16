@@ -33,6 +33,7 @@
 @large-screen: 1260px;
 @max-screen: 1400px;
 
+@fonts: 'Quattrocento', serif;
 
 /*********************************************************************
 * General HTML tags
@@ -41,6 +42,9 @@
 
 * {
 	box-sizing: border-box;
+	-moz-osx-font-smoothing: grayscale;
+	-webkit-text-size-adjust: 100%;
+	text-rendering: optimizeLegibility;
 }
 
 ::-moz-selection {
@@ -59,7 +63,7 @@ body {
 }
 
 body, td, input[type=text], textarea {
-	font-family: 'Quattrocento', serif;
+	font-family: @fonts;
 	font-size: 105%;
 	line-height: 1.8em;
 	color: #444;
@@ -127,6 +131,7 @@ hr {
 	padding: 0;
 }
 
+
 /*********************************************************************
  * 2. nav area
  *
@@ -162,53 +167,6 @@ hr {
 		background: none;
 	}
 
-.languages {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	float: right;
-	width: 30%;
-	font-size: 80%;
-}
-
-	.languages li {
-		list-style: none;
-		display: inline-block;
-		margin: 0;
-		padding: 0;
-	}
-
-	.languages a {
-		padding: 0 0.5em;
-		border: none;
-		display: inline;
-		border-left: 1px solid #ccc;
-	}
-		.languages li.current a {
-			font-weight: bold;
-		}
-		.languages li:first-child a {
-			border: none;
-			padding-left: 0;
-		}
-
-
-
-form.search {
-	float: right;
-	margin: 0;
-	width: 30%;
-	padding-bottom: 1em;
-}
-	form.search input {
-		margin: 0;
-		padding: 0.25em 0.5em;
-		border: 1px solid #ccc;
-		width: 100%;
-	}
-	form.search button {
-		display: none;
-	}
 
 .breadcrumbs {
 	font-size: 80%;
