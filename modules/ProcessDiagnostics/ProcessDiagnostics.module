@@ -1,0 +1,390 @@
+<?php
+
+/**
+ * A simple diagnostics module for ProcessWire.
+ *
+ * Inspired by the diagnostics tab in Textpattern.
+ */
+class ProcessDiagnostics extends Process
+{
+    public static $ok;
+    public static $fail;
+    public static $warn;
+
+    public static $exists;
+    public static $not_exists;
+    public static $read;
+    public static $not_read;
+    public static $write;
+    public static $not_write;
+
+    public static $verbosity;
+
+    protected static $disabled_functions;
+    protected $diagnostic_module_count;
+
+    const LOW_VERBOSITY    = 1;
+    const MEDIUM_VERBOSITY = 2;
+    const HIGH_VERBOSITY   = 4;
+
+    public static function getModuleInfo()
+    {
+        return array(
+            'title'     => __('Diagnostics Page', __FILE__),
+            'summary'   => __('Allows evaluation of run-time environment and detection of changes.', __FILE__),
+            'version'   => 22,
+            'permanent' => false,
+            'autoload'  => false,
+            'singular'  => true,
+            'author'    => 'Stephen Dickinson, QBox',
+        );
+    }
+
+
+    public function init()
+    {
+        parent::init();
+
+        self::$ok   = $this->_('OK');
+        self::$fail = $this->_('Failure');
+        self::$warn = $this->_('Warning');
+
+        self::$exists     = $this->_('Exists');
+        self::$not_exists = $this->_('Does not exist.');
+        self::$read       = $this->_('is readable');
+        self::$not_read   = $this->_('is not readable');
+        self::$write      = $this->_('is writable');
+        self::$not_write  = $this->_('is not writable');
+
+        self::$verbosity = self::HIGH_VERBOSITY;
+
+        self::$disabled_functions = explode(',' , str_replace(' ', '', strtolower(ini_get('disable_functions'))));
+
+        $this->loadDiagnosesModules();
+
+        if ($owner = $this->sanitizer->fieldName($this->input->get('owner'))) {
+            if ($this->modules->isInstalled($owner) && 'Diagnose' === substr($owner, 0, 8)) {
+                $action = $this->sanitizer->fieldName($this->input->get('action'));
+                $this->action($owner, $action);
+            }
+        }
+    }
+
+
+
+    private function loadDiagnosesModules() {
+        $this->diagnostic_module_count = 0;
+        foreach($this->modules as $module) {
+            if ('Diagnose' === substr($module->name, 0, 8)) {
+                $this->modules->get($module->name);
+                $this->diagnostic_module_count++;
+            }
+        }
+    }
+
+
+    /**
+     * Converts a number of bytes into a more human readable form
+     */
+    public static function humanSize($b)
+    {
+        if ($b < 1024) {
+            return "$b bytes";
+        } else if (strlen($b) <= 9 && strlen($b) >= 7) {
+            return number_format($b / 1048576, 2)." MB";
+        } elseif (strlen($b) >= 10) {
+            return number_format($b / 1073741824, 2)." GB";
+        }
+        return number_format($b / 1024, 2)." KB";
+    }
+
+
+
+    /**
+     *
+     */
+    public static function row($title, $value, $status = 'OK', $action = '')
+    {
+        switch ($status) {
+            case 'OK' :
+                $status = ProcessDiagnostics::$ok;
+                break;
+            case 'NOTICE' :
+                $status = ProcessDiagnostics::$notics;
+                break;
+            case 'WARN' :
+                $status = ProcessDiagnostics::$warn;
+                break;
+            case 'FAIL' :
+                $status = ProcessDiagnostics::$fail;
+                break;
+        }
+
+        return array(
+            'title'  => $title,
+            'value'  => $value,
+            'status' => $status,
+            'action' => $action,
+        );
+    }
+
+    /**
+     * Reads basic FS parameters for the given file or directory.
+     */
+    public static function getFileSystemAttribs($name, $pathspec)
+    {
+        $fs_info = array(
+            'name'   => $name,
+            'path'   => $pathspec,
+            'exists' => file_exists($pathspec),
+            'isfile' => false,
+            'islink' => false,
+            'isdir'  => false,
+            'read'   => false,
+            'write'  => false,
+            'exec'   => false,
+            'perms'  => false,
+        );
+
+        if ($fs_info['exists']) {
+            $fs_info['isfile'] = is_file($pathspec);
+            $fs_info['islink'] = is_link($pathspec);
+            $fs_info['isdir']  = is_dir($pathspec);
+            $fs_info['read']   = is_readable($pathspec);
+            $fs_info['write']  = is_writable($pathspec);
+            $fs_info['exec']   = is_executable($pathspec);
+            $fs_info['perms']  = fileperms($pathspec);
+        }
+
+        return $fs_info;
+    }
+
+
+    /**
+     *
+     */
+    public static function chooseStatus(array $warnings, array $fails)
+    {
+        if (count($fails)) {
+            return ProcessDiagnostics::$fail;
+        }
+
+        if (count($warnings)) {
+            return ProcessDiagnostics::$warn;
+        }
+
+        return ProcessDiagnostics::$ok;
+    }
+
+    /**
+     * Creates a text description from the given file information.
+     */
+    public static function describeFSInfo($info)
+    {
+        $out = array();
+
+        if ($info['exists']) {
+            $out[] = self::$exists;
+
+            if ($info['read']) {
+                $out[] = self::$read;
+            } else {
+                $out[] = self::$not_read;
+            }
+
+            if ($info['write']) {
+                $out[] = self::$write;
+            } else {
+                $out[] = self::$not_write;
+            }
+
+            $out[] = substr(sprintf('%o', $info['perms']), -4);
+        } else {
+            $out[] = self::$not_exists;
+        }
+
+        return implode(', ', $out);
+    }
+
+
+
+    /**
+     * Capitialise the initial character of the given string.
+     */
+    public static function initCap($string)
+    {
+        return strtoupper($string[0]) . substr($string, 1);
+    }
+
+
+    /**
+     * To extend the collected information, DiagnoseXyz modules will hook this method and add results.
+     * Each hook must return an array of results and each result will be an array with four string
+     * keys... 'title', 'value', 'status' and 'action'.
+     *
+     * Take a look at the Diagnose modules to see how this is done.
+     */
+    public function ___collectDiagnostics()
+    {
+        $results = array(
+        );
+
+        return $results;
+    }
+
+
+
+    public function ___action()
+    {
+    }
+
+
+
+    /**
+     * returns if function is disabled in php
+     *
+     * @return boolean: true, false
+     */
+    static public function isDisabled($function) {
+        return in_array(strtolower($function), self::$disabled_functions);
+    }
+
+
+    /**
+     * Applies the selected verbosity to filter out unwanted diagnostic results.
+     */
+    public function filterDiagnostics(array $results)
+    {
+        if (self::HIGH_VERBOSITY === self::$verbosity) {
+            return $results;
+        }
+
+        $filtered = array();
+        foreach ($results as $caption => &$section_results) {
+            $section_filtered = array();
+            foreach ($section_results as $k => $diagnosis) {
+                $status = $diagnosis['status'];
+
+                if (
+                   ($status === self::$ok) ||
+                   ($status === self::$warn && self::LOW_VERBOSITY === self::$verbosity)
+                ) {
+                    continue;
+                }
+
+                $section_filtered[] = $diagnosis;
+            }
+
+            if (count($section_filtered)) {
+                $filtered[$caption] = $section_filtered;
+            }
+        }
+
+        return $filtered;
+    }
+
+
+
+
+    public function ___execute()
+    {
+        $this->setFuel('processHeadline', $this->_('System Diagnostics'));
+        $inputfields = new InputfieldWrapper();
+
+
+        if (0 == $this->diagnostic_module_count) {
+            $fieldset = $this->modules->get('InputfieldFieldset');
+            $fieldset->label = $this->_('No Diagnostic Helpers Installed');
+
+            $markup = $this->modules->get("InputfieldMarkup");
+            $markup->set(
+                'value',
+                "<a href='" . $this->config->urls->admin . "module'>" . $this->_('Install') . '</a> ' .
+                $this->_('one or more "Diagnose..." modules in order to view results.')
+            );
+
+            $fieldset->add($markup);
+
+            $inputfields->add($fieldset);
+        } else {
+            $results = $this->collectDiagnostics();
+
+            /**
+             * Apply verbosity rules to collected information...
+             */
+            $results = $this->filterDiagnostics($results);
+
+            foreach ($results as $caption => $section_results) {
+                $fieldset = $this->modules->get('InputfieldFieldset');
+                $fieldset->label = htmlspecialchars($caption, ENT_QUOTES, 'UTF-8');
+
+                $table = $this->modules->get("MarkupAdminDataTable");
+                $table->setEncodeEntities(false);
+                $table->setClass('diagnostics-table');
+                $table->headerRow(array(
+                    $this->_('Attribute'),
+                    $this->_('Value'),
+                    $this->_('Status'),
+                    $this->_('Notes / Corrective Actions')
+                ));
+
+
+                foreach ($section_results as $k => $row) {
+                    $class = 'ok';
+                    switch ($row['status']) {
+                        case self::$fail :
+                            $class = 'failure';
+                            break;
+                        case self::$warn :
+                            $class = 'warning';
+                            break;
+                        default :
+                            $class = 'ok';
+                    }
+
+                    $table->row(array(
+                        html_entity_decode($row['title']),
+                        html_entity_decode($row['value']),
+                        '<span class="'.$class.'">' . $row['status'] . '</span>',
+                        html_entity_decode($row['action'])
+                    ));
+
+                }
+
+
+                $markup = $this->modules->get("InputfieldMarkup");
+                $markup->set('value', $table->render());
+
+                $fieldset->add($markup);
+
+                $inputfields->add($fieldset);
+            }
+        }
+
+        return $inputfields->render();
+    }
+
+
+
+    public function ___install()
+    {
+        $p = new Page();
+        $p->template = $this->templates->get("admin");
+        $p->parent = $this->pages->get("template=admin, name=setup");
+        $p->title = $this->_('Diagnostics');
+        $p->name  = __CLASS__;
+        $p->process = $this;
+        $p->save();
+    }
+
+
+    public function ___uninstall()
+    {
+        $p = $this->pages->get('template=admin, name=' . __CLASS__);
+        if ($p->id > 0) {
+            $p->delete();
+        }
+    }
+}
+
+// eof

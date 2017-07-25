@@ -1,0 +1,267 @@
+<?php
+
+/**
+ * Hooks into ProcessDiagnostics to add additional Database related information.
+ */
+class DiagnoseDatabase extends Wire implements Module
+{
+    public static function getModuleInfo()
+    {
+        return array(
+            'title'     => __('Database Diagnostics', __FILE__),
+            'summary'   => __('Allows collection of database diagnostics', __FILE__),
+            'version'   => 2,
+            'permanent' => false,
+            'autoload'  => false,
+            'singular'  => true,
+            'requires'  => 'ProcessDiagnostics',
+            'installs'  => 'ProcessDiagnostics',
+            'author'    => 'Stephen Dickinson, QBox',
+        );
+    }
+
+
+    public function init()
+    {
+        $this->addHookAfter('ProcessDiagnostics::collectDiagnostics', $this, 'AppendDiagnostics');
+        $this->addHookBefore('ProcessDiagnostics::action', $this, 'PerformActions');
+    }
+
+
+    /**
+     *
+     */
+    public function collectVarsLike($pattern)
+    {
+        $out = array();
+        $group = $this->db->query('SHOW VARIABLES LIKE "'.$pattern.'"');
+        while ($r = $group->fetch_assoc()) {
+            $out[$r['Variable_name']] = $r['Value'];
+        }
+        return $out;
+    }
+
+
+    /**
+     *
+     */
+    public function renderCollectionAsCell($collection, $show_last = true)
+    {
+        $out = array();
+        foreach ($collection as $k => $v) {
+            if ($show_last) {
+                $k = explode('_', $k);
+                $k = ucwords($k[count($k)-1]);
+            }
+            $out[] = "$k: $v";
+        }
+        return implode('<br>', $out);
+    }
+
+    /**
+     *
+     */
+    public function checkTables2()
+    {
+        $version = $this->db->query('SELECT VERSION() as version');
+        $version = $version->fetch_assoc();
+        $version = $version['version'];
+        $results[] = ProcessDiagnostics::row($this->_('Server Version'), $version);
+
+        /**
+         * Check character sets for possible mismatches in the client -> connection -> db -> results chain...
+         */
+        $charsets   = $this->collectVarsLike('character_set_%');
+        unset($charsets['character_sets_dir']);
+        unset($charsets['character_set_filesystem']);
+        unset($charsets['character_set_server']);
+        unset($charsets['character_set_system']);
+        $charsets = array('PW' => $this->wire->config->dbCharset) + $charsets;
+        $warnings = array();
+        if ($charsets['PW'] !== 'utf8') {
+            $warnings[] = $this->_('The usual encoding for the DB in ProcessWire is "utf8".');
+        }
+
+        foreach ($charsets as $k => $v) {
+            if ($charsets['PW'] !== $v) {
+                $warnings[] = $this->_('Character sets mismatched. Components will be forced to convert between character sets possibly introducing transliterations or incorrectly displaying results.');
+                break;
+            }
+        }
+
+        $results[] = array(
+            'title'  => $this->_('Character set chain'),
+            'value'  => $this->renderCollectionAsCell($charsets),
+            'status' => ProcessDiagnostics::chooseStatus($warnings, array()),
+            'action' => implode('<br>', $warnings),
+        );
+
+        $collations = $this->collectVarsLike('collation_%');
+        unset($collations['collation_server']);
+        $collation_mismatch = $collations['collation_connection'] !== $collations['collation_database'];
+        $results[] = array(
+            'title'  => $this->_('Collation chain'),
+            'value'  => $this->renderCollectionAsCell($collations),
+            'status' => $collation_mismatch ? ProcessDiagnostics::$warn : ProcessDiagnostics::$ok,
+            'action' => $collation_mismatch ? $this->_('Connection and Database are using different collations. This might change the expected sort order of some queries.') : '',
+        );
+
+        if ($this->wire->config->dbSocket) {
+            $results[] = ProcessDiagnostics::row($this->_('Server Connection'), $this->_('socket: ') . $this->wire->config->dbSocket);
+        } else {
+            $results[] = ProcessDiagnostics::row($this->_('Server Location'), $this->wire->config->dbHost . ':' . $this->wire->config->dbPort);
+        }
+
+        $results[] = ProcessDiagnostics::row($this->_('Using Database'), $this->wire->config->dbName);
+
+        $tables = $this->db->query("SHOW TABLE STATUS");
+        while ($t = $tables->fetch_assoc()) {
+            $warnings = array();
+            $fails    = array();
+            $notes    = array();
+
+            extract($t, EXTR_PREFIX_ALL, 't');
+
+            // MyISAM maintains an exact row count. Other engines don't necessarily so get the actual row count...
+            if ('MyISAM' !== $t_Engine) {
+                $count  = $this->db->query("SELECT COUNT(*) AS `rows` FROM `$t_Name`");
+                $count  = $count->fetch_assoc();
+                $t_Rows = $count['rows'];
+            }
+
+
+            $wasted = '';
+            if ($t_Data_free) {
+                $wasted = '<br>'. $this->_('Overhead: ') . ProcessDiagnostics::humanSize($t_Data_free);
+                $warnings[] = '<a href="?owner='.__CLASS__.'&action=optimize&table='.$t_Name.'">'.$this->_('Optimize').'</a> ' .
+                    $this->_(' table to reclaim space and reorganize indexes.');
+            }
+
+            $t_Data_length  = $this->_('Data: ')  . ProcessDiagnostics::humanSize($t_Data_length);
+            $t_Index_length = $this->_('Index: ') . ProcessDiagnostics::humanSize($t_Index_length);
+
+            if (!preg_match("/^{$this->wire->config->dbCharset}/ui", $t_Collation)) {
+                if ($t_Name !== 'field_pass' && $t_Name !== 'process_forgot_password') {
+                    $charset = explode('_', $t_Collation);
+                    $charset = $charset[0];
+                    $warnings[] = $this->_('Character set mismatch with connection. This <em>might</em> lead to data corruption. Sanitise your data to match '.$charset.' before sending it to the DB.');
+                } else {
+                    $notes[] = $this->_('Although the character set mismatches the connection character set, the data stored in this table is sanitised correctly by PW before being sent to the DB.');
+                }
+            }
+
+            $results[] = array(
+                'title'  => "<span id='table_{$t_Name}'><strong>$t_Name</strong></span><br>$t_Engine / $t_Collation",
+                'value'  => $this->_('Rows: ') . "$t_Rows<br>$t_Data_length<br>$t_Index_length$wasted",
+                'status' => ProcessDiagnostics::chooseStatus($warnings, $fails),
+                'action' => implode('<br>', array_merge($fails, $warnings, $notes)),
+            );
+        }
+
+        return $results;
+    }
+
+    public function checkTables()
+    {
+        $msgs   = array();
+        $tables = array();
+
+        $result = $this->db->query("SHOW TABLES");
+        while ($row = $result->fetch_assoc()) {
+            $tables[] = array_shift($row);
+        }
+
+        foreach ($tables as $table) {
+            $result = $t->db->query("CHECK TABLE `$table` QUICK");
+            while ($row = $result->fetch_assoc()) {
+
+                switch ($row['Msg_type']) {
+                    default:
+
+                        $status = ProcessDiagnostics::$ok;
+                        break;
+                }
+
+
+                $t = $this->db->query("SHOW CREATE TABLE `$table`");
+                $info = $t->fetch_assoc();
+                if (preg_match('/ENGINE=([^\s]+)\s/ui', $info['Create Table'], $m)) {
+                    $engine = $m[1];
+                } else {
+                    $engine = 'Unknown';
+                }
+
+                if (preg_match('/DEFAULT CHARSET=([^\s]+)/ui', $info['Create Table'], $m)) {
+                    $charset = $m[1];
+                } else {
+                    $charset = 'Unknown';
+                }
+
+                $msgs[] = array(
+                    'title'  => $table,
+                    'value'  => "$engine, '$charset'",
+                    'status' => $status,
+                    'action' => 'OK' !== $row['Msg_text'] ? $row['Msg_text'] : '',
+                );
+            }
+        }
+
+        return $msgs;
+    }
+
+
+    /**
+     * Collects DB Diagnostics.
+     */
+    public function GetDiagnostics()
+    {
+        $results[] = array(
+            'title'  => 'DB Provider',
+            'value'  => 'PDO::MySQL',
+            'status' => ProcessDiagnostics::$ok,
+            'action' => '',
+        );
+
+        $results = $this->checkTables2();
+
+        return $results;
+    }
+
+
+
+    /**
+     *
+     */
+    public function PerformActions($event)
+    {
+        $owner  = $event->arguments(0);
+
+        if (__CLASS__ === $owner) {
+            $valid_actions = array('optimize');
+            $action = $event->arguments(1);
+
+            if (in_array($action, $valid_actions)) {
+                switch ($action) {
+                    case 'optimize':
+                        $table = $this->sanitizer->name($this->input->get('table'));
+                        $result = $this->db->query("OPTIMIZE NO_WRITE_TO_BINLOG TABLE `$table`");
+                        $this->message($owner.' '.$this->_('optimized table: '.$table));
+                        break;
+
+                    default:
+                        // No action!
+                        break;
+                }
+            }
+        }
+    }
+
+
+
+    public function AppendDiagnostics($event)
+    {
+        $results = $event->return;
+        $results[$this->_('Database Diagnostics')] = $this->GetDiagnostics();
+        $event->return = $results;
+    }
+}

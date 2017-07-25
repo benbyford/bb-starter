@@ -1,0 +1,124 @@
+<?php
+
+/**
+ * Hooks into ProcessDiagnostics to add additional filesystem related information.
+ */
+class DiagnoseFiles extends Wire implements Module
+{
+    public static function getModuleInfo()
+    {
+        return array(
+            'title'     => __('Filesystem Diagnostics', __FILE__),
+            'summary'   => __('Allows collection of file and directory diagnostics', __FILE__),
+            'version'   => 1,
+            'permanent' => false,
+            'autoload'  => false,
+            'singular'  => true,
+            'requires'  => 'ProcessDiagnostics',
+            'installs'  => 'ProcessDiagnostics',
+            'author'    => 'Stephen Dickinson, QBox.co',
+        );
+    }
+
+
+    public function init()
+    {
+        $this->addHookAfter('ProcessDiagnostics::collectDiagnostics', $this, 'AppendDiagnostics');
+    }
+
+    /**
+     * TODO extend these checks to cover other users in the system, not just the webserver user. For example, if a dir
+     * is 777 it's probably too wide open and at least needs a warning generated.
+     */
+    protected function GetDiagnostics()
+    {
+        $install_file = ProcessDiagnostics::getFileSystemAttribs($this->_('Installation file'),        $this->wire->config->paths->root.'/install.php');
+        $install_dir  = ProcessDiagnostics::getFileSystemAttribs($this->_('Installation directory'),   $this->wire->config->paths->root.'/site/install/');
+        $site_def_dir = ProcessDiagnostics::getFileSystemAttribs($this->_('/site-default/ directory'), $this->wire->config->paths->root.'/site-default/');
+
+        $root_info    = ProcessDiagnostics::getFileSystemAttribs($this->_('Root directory'),    $this->wire->config->paths->root);
+        $asset_info   = ProcessDiagnostics::getFileSystemAttribs($this->_('Assets directory'),  $this->wire->config->paths->assets);
+        $cache_info   = ProcessDiagnostics::getFileSystemAttribs($this->_('Cache directory'),   $this->wire->config->paths->cache);
+        $sess_info    = ProcessDiagnostics::getFileSystemAttribs($this->_('Session directory'), $this->wire->config->paths->sessions);
+        $site_info    = ProcessDiagnostics::getFileSystemAttribs($this->_('Site directory'),    $this->wire->config->paths->site);
+
+        $inst_file_ok = !$install_file['exists'];
+        $inst_dir_ok  = !$install_dir['exists'];
+        $root_ok      =  $root_info['exists']  &&  $root_info['read']  && !$root_info['write'];
+        $assets_ok    =  $asset_info['exists'] &&  $asset_info['read'] &&  $asset_info['write'];
+        $cache_ok     =  $cache_info['exists'] &&  $cache_info['read'] &&  $cache_info['write'];
+        $sessions_ok  =  $sess_info['exists']  &&  $sess_info['read']  &&  $sess_info['write'];
+
+        $results[] = array(
+            'title'  => $root_info['name'],
+            'value'  => ProcessDiagnostics::describeFSInfo($root_info),
+            'status' => ($root_ok) ? ProcessDiagnostics::$ok : ProcessDiagnostics::$fail,
+            'action' => ($root_ok) ? '' : $this->_('Folder should not be writable for webserver user.'),
+        );
+
+        $results[] = array(
+            'title'  => $install_file['name'],
+            'value'  => ProcessDiagnostics::describeFSInfo($install_file),
+            'status' => ($inst_file_ok) ? ProcessDiagnostics::$ok : ProcessDiagnostics::$fail,
+            'action' => ($inst_file_ok) ? '' : $this->_('Delete the file "install.php".'),
+        );
+
+        $results[] = array(
+            'title'  => $install_dir['name'],
+            'value'  => ProcessDiagnostics::describeFSInfo($install_dir),
+            'status' => ($inst_dir_ok) ? ProcessDiagnostics::$ok : ProcessDiagnostics::$fail,
+            'action' => ($inst_dir_ok) ? '' : $this->_('Delete the "/site/install/" directory.'),
+        );
+
+        if ($site_def_dir['exists']) {
+            $results[] = array(
+                'title'  => $site_def_dir['name'],
+                'value'  => ProcessDiagnostics::describeFSInfo($site_def_dir),
+                'status' => ($inst_dir_ok) ? ProcessDiagnostics::$ok : ProcessDiagnostics::$fail,
+                'action' => ($inst_dir_ok) ? '' : (($site_info['exists']) ? $this->_('Delete the "/site-default/" directory.') :
+                                                                            $this->_('Installation should have renamed "/site-default/" to "/site/".')),
+                );
+        }
+
+        $site_ok = $site_info['exists'] && $site_info['read'] && !$site_info['write'];
+        $results[] = array(
+            'title'  => $site_info['name'],
+            'value'  => ProcessDiagnostics::describeFSInfo($site_info),
+            'status' => ($site_ok) ? ProcessDiagnostics::$ok : ProcessDiagnostics::$fail,
+            'action' => ($site_ok) ? '' : $this->_('Folder should not be writable for webserver user.'),
+        );
+
+        $results[] = array(
+            'title'  => $asset_info['name'],
+            'value'  => ProcessDiagnostics::describeFSInfo($asset_info),
+            'status' => ($assets_ok) ? ProcessDiagnostics::$ok : ProcessDiagnostics::$fail,
+            'action' => ($assets_ok) ? '' : $this->_('Folder should be writable for webserver user.'),
+        );
+
+        $results[] = array(
+            'title'  => $cache_info['name'],
+            'value'  => ProcessDiagnostics::describeFSInfo($cache_info),
+            'status' => ($cache_ok) ? ProcessDiagnostics::$ok : ProcessDiagnostics::$fail,
+            'action' => ($cache_ok) ? '' : $this->_('Folder should be writable for webserver user.'),
+        );
+
+        $results[] = array(
+            'title'  => $sess_info['name'],
+            'value'  => ProcessDiagnostics::describeFSInfo($sess_info),
+            'status' => ($sessions_ok) ? ProcessDiagnostics::$ok : ProcessDiagnostics::$fail,
+            'action' => ($sessions_ok) ? '' : $this->_('Folder should be writable for webserver user.'),
+        );
+
+
+        return $results;
+    }
+
+
+
+    public function AppendDiagnostics($event)
+    {
+        $results = $event->return;
+        $results[$this->_('File System Diagnostics')] = $this->GetDiagnostics();
+        $event->return = $results;
+    }
+}

@@ -1,0 +1,52 @@
+<?php
+
+/**
+ * Hooks into ProcessDiagnostics to add additional example information.
+ */
+class DiagnoseExample extends Wire implements Module
+{
+
+    public static function getModuleInfo()
+    {
+        return array(
+            'title'     => __('Example Diagnostics Provider', __FILE__),
+            'summary'   => __('Demonstrates how to write a simple diagnostics provider module', __FILE__),
+            'version'   => 1,
+            'permanent' => false,
+            'autoload'  => false,
+            'singular'  => true,
+            'requires'  => 'ProcessDiagnostics',
+            'installs'  => 'ProcessDiagnostics',
+            'author'    => 'Stephen Dickinson, QBox',
+        );
+    }
+
+
+    public function init()
+    {
+        $this->addHookAfter('ProcessDiagnostics::collectDiagnostics', $this, 'AppendDiagnostics');
+    }
+
+    /**
+     * Collects Diagnostics.
+     */
+    public function GetDiagnostics()
+    {
+        $results[] = array(
+            'title'  => $this->_('Thing diagnosed'),
+            'value'  => $this->_('Bad value!'),
+            'status' => ProcessDiagnostics::$fail, // other valid values are ::$warn and ::$ok.
+            'action' => $this->_('Describe how to correct the bad value.'),
+        );
+
+        return $results;
+    }
+
+
+    public function AppendDiagnostics($event)
+    {
+        $results = $event->return;
+        $results[$this->_('Example Diagnostics')] = $this->GetDiagnostics();
+        $event->return = $results;
+    }
+}

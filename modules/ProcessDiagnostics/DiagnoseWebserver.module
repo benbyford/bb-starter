@@ -1,0 +1,113 @@
+<?php
+
+/**
+ * Hooks into ProcessDiagnostics to add additional Web server related information.
+ */
+class DiagnoseWebserver extends Wire implements Module
+{
+    public static function getModuleInfo()
+    {
+        return array(
+            'title'     => __('Webserver Diagnostics', __FILE__),
+            'summary'   => __('Allows collection of webserver diagnostics', __FILE__),
+            'version'   => 1,
+            'permanent' => false,
+            'autoload'  => false,
+            'singular'  => true,
+            'requires'  => 'ProcessDiagnostics',
+            'installs'  => 'ProcessDiagnostics',
+            'author'    => 'Stephen Dickinson, QBox',
+        );
+    }
+
+
+    public function init()
+    {
+        $this->addHookAfter('ProcessDiagnostics::collectDiagnostics', $this, 'AppendDiagnostics');
+
+        $this->server_software = '';
+        if (isset($_SERVER['SERVER_SOFTWARE'])) {
+            $this->server_software = $_SERVER['SERVER_SOFTWARE'];
+        } else if (isset($_SERVER['HTTP_HOST'])) {
+            $this->server_software = $_SERVER['HTTP_HOST'];
+        }
+
+        $this->is_apache = (($this->server_software && stristr($this->server_software, 'apache')) || is_callable('apache_get_version'));
+    }
+
+
+
+    /**
+     * Returns a diagnostic array about the webserver.
+     *
+     * For Apache, this also checks if the .htaccess file is in the right place and is readable by the webserver.
+     */
+    public function GetDiagnostics()
+    {
+        $results[] = array(
+            'title'  => $this->_('Webserver'),
+            'value'  => $this->server_software,
+            'status' => ProcessDiagnostics::$ok,
+            'action' => '',
+        );
+
+        if ($this->is_apache) {
+            if (is_callable('apache_get_modules')) {
+                $apache_modules = apache_get_modules();
+
+                $rewrite_ok = in_array('mod_rewrite', $apache_modules);
+                $results[] = array(
+                    'title'  => $this->_('Apache mod_rewrite'),
+                    'value'  => $rewrite_ok ? $this->_('Installed') :
+                                              $this->_('Not installed'),
+                    'status' => $rewrite_ok ? ProcessDiagnostics::$ok : ProcessDiagnostics::$fail,
+                    'action' => $rewrite_ok ? '' : $this->_('Install mod_rewrite, it\'s currently not available to Apache.'),
+                );
+            }
+
+            $ht_info = ProcessDiagnostics::getFileSystemAttribs('.htaccess', $this->wire->config->paths->root.'/.htaccess');
+            $httext_info = ProcessDiagnostics::getFileSystemAttribs('htaccess.txt', $this->wire->config->paths->root.'/htaccess.txt');
+
+            $ht_ok        = $ht_info['exists'] && $ht_info['read'];
+            $ht_write     = $ht_info['write'];
+            $ht_status    = ProcessDiagnostics::$fail;
+            if ($ht_ok) {
+                if ($ht_write) {
+                    $ht_status = ProcessDiagnostics::$warn;
+                } else {
+                    $ht_status = ProcessDiagnostics::$ok;
+                }
+            }
+            $ht_mv_needed = $httext_info['exists'] && !$ht_info['exists'];
+
+            if ($httext_info['exists']) {
+                // Diagnostics for the htaccess.txt file...
+                $results[] = array(
+                    'title'  => 'htaccess.txt',
+                    'value'  => ProcessDiagnostics::describeFSInfo($httext_info),
+                    'status' => ($ht_mv_needed || $httext_info['exists']) ? ProcessDiagnostics::$fail : ProcessDiagnostics::$ok,
+                    'action' => $ht_mv_needed ? $this->_('Rename htaccess.txt to .htaccess') :
+                    $httext_info['exists'] ? $this->_('Delete htaccess.txt') : '',
+                    );
+            }
+
+            // Diagnostics for the .htaccess file...
+            $results[] = array(
+                'title'  => $this->_('.htaccess file'),
+                'value'  => ProcessDiagnostics::describeFSInfo($ht_info),
+                'status' => $ht_status,
+                'action' => $ht_ok && !$ht_write ? '' : $this->_('.htaccess must exist, must be readable, should <strong>not</strong> be writable.'),
+            );
+        }
+
+        return $results;
+    }
+
+
+    public function AppendDiagnostics($event)
+    {
+        $results = $event->return;
+        $results[$this->_('Webserver Diagnostics')] = $this->GetDiagnostics();
+        $event->return = $results;
+    }
+}

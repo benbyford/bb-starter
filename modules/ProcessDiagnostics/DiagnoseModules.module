@@ -1,0 +1,177 @@
+<?php
+
+/**
+ * Hooks into ProcessDiagnostics to add additional module version related information.
+ */
+class DiagnoseModules extends Wire implements Module, ConfigurableModule
+{
+    public static function getModuleInfo()
+    {
+        return array(
+            'title'     => __('Module version checking', __FILE__),
+            'summary'   => __('Allows collection of module version diagnostics', __FILE__),
+            'version'   => 101,
+            'permanent' => false,
+            'autoload'  => false,
+            'singular'  => true,
+            'requires'  => 'ProcessDiagnostics',
+            'installs'  => 'ProcessDiagnostics',
+            'author'    => 'Nico Knoll',
+        );
+    }
+
+    private $defaultServiceUrl = 'http://modules.processwire.com/export-json/';
+    private $defaultServiceKey = 'pw231';
+    private $lang;
+    private $maxCacheAge = 804600; // in seconds (7 * 24 * 60 * 60)
+
+
+    public function init()
+    {
+        $this->addHookAfter('ProcessDiagnostics::collectDiagnostics', $this, 'AppendDiagnostics');
+
+        $this->lang = array(
+            'updateAvailable' => $this->_("Update available"),
+            'newVersion' => $this->_("There is a new version available."),
+            'clickHere' => $this->_("Click here to go to the update page."),
+            'upToDate' => $this->_("Up to date"),
+            'warning' => $this->_("Warning")
+        );
+
+        // reset cache
+        $updated = $this->getCache('_updated');
+        $updated = $updated[0];
+        if((time() - $updated) > $this->maxCacheAge || (int)$this->input->get->modulecachereset == 1) $this->resetCache();
+
+        // Javascript config and script
+        $this->config->js('DiagnosticsModules', $this->lang);
+        $this->config->scripts->add($this->config->urls->DiagnoseModules . "DiagnoseModules.js");
+
+        // if ajax Request don't otput markup
+        if($this->input->get->moduleAjax != '') {
+            echo $this->ajaxRemoteVersion($this->input->get->moduleAjax);
+            exit;
+        }
+    }
+
+
+
+    private function ajaxRemoteVersion($moduleClassName) {
+        $moduleInfo = wire('modules')->getModuleInfo($moduleClassName);       
+        $localVersion = $this->formatVersion($moduleInfo['version']);
+
+        $url = trim($this->defaultServiceUrl, '/') . "/".$moduleClassName."/?apikey=" . $this->defaultServiceKey;
+
+        $http = new WireHttp();
+        $data = json_decode($http->get($url));
+
+        if($data->status != 'error') {
+            $remoteVersion = $this->formatVersion($data->module_version);
+            $version =  $remoteVersion;
+        } else {
+            $version = $localVersion;
+        }
+
+        $this->setCache($moduleClassName, (array)$version);
+
+        return $version;
+    }
+
+
+    /**
+     * Returns a diagnostic array about installed modules and looks for updates
+     */
+    public function GetDiagnostics()
+    {
+        foreach($this->modules as $module) {
+
+            $moduleInfo = wire('modules')->getModuleInfo($module->className());
+            
+            // don't show core modules
+            $filename = $this->config->urls->{$module->className()};
+            if(preg_match('%^\/wire\/%Uis', $filename)) continue;
+            
+            $localVersion = $this->formatVersion($moduleInfo['version']);
+
+            // check if core module
+            $core = false;
+            $pathParts = explode('/', str_replace($this->config->urls->root, '', $this->config->urls->{$module->className()}), 2);
+            if($pathParts[0] == 'wire') {
+                $core = true;
+            }
+
+            // only show installes /site/ modules
+            if($core == false) {
+                // if not cached
+
+                if(!count($this->getCache($module->className()))) {
+                    $results[] = array(
+                        'title'  => $moduleInfo['title'].' ('.$module->className().')',
+                        'value'  => '<span class="module'.$module->className().' moduleValue" data-version="'.$localVersion.'" data-module="'.$module->className().'"></span>',
+                        'status' => '<span class="module'.$module->className().' moduleStatus modulePending" data-version="'.$localVersion.'" data-module="'.$module->className().'">'.$this->_("Pending").'</span>',
+                        'action' => '<span class="module'.$module->className().' moduleAction" data-version="'.$localVersion.'" data-module="'.$module->className().'"></span>',
+                    );
+                } else {
+                    // if cache file exists
+                    $data = $this->getCache($module->className());
+
+                    $updatable = ($data[0] > $localVersion);
+                    $updateUrl = $this->config->urls->admin.'module/?update='.$module->className();
+
+                    $results[] = array(
+                        'title'  => $moduleInfo['title'].' ('.$module->className().')',
+                        'value'  => $updatable ? $this->_('Update available') :
+                                                 $this->_('Up to date'),
+                        'status' => $updatable ? ProcessDiagnostics::$warn : ProcessDiagnostics::$ok,
+                        'action' => $updatable ? sprintf($this->_('There is a new version available. <a href="%s">Click here to go to update page.</a>'), $updateUrl) : '',
+                    );
+
+                }
+            }
+        }
+
+        return $results;
+    }
+
+    private function setCache($key, $value) {
+        $data = wire('modules')->getModuleConfigData($this);
+        $data[$key] = $value;
+        $data['_updated'] = time();
+        wire('modules')->saveModuleConfigData($this, $data); 
+    }
+
+    private function getCache($key) {
+        $data = wire('modules')->getModuleConfigData($this); 
+        if(in_array($key, array_keys($data))) {
+            $value = $data[$key];
+        } else {
+            $value = array();
+        }
+        return (array)$value;
+    }
+
+    private function resetCache() {
+        wire('modules')->saveModuleConfigData($this, array()); 
+        $this->setCache('_updated', time());
+    }
+
+
+    protected function formatVersion($version)
+    {
+        return preg_replace('/(\d)(?=\d)/', '$1.', str_pad( (string)str_replace(',', '.', $version), 3, '0', STR_PAD_LEFT));
+    }
+
+
+    public function AppendDiagnostics($event)
+    {
+        $results = $event->return;
+        $results[$this->_('Module Version Diagnostics')] = $this->GetDiagnostics();
+        $event->return = $results;
+    }
+
+    public function __set($a, $b) {}
+
+    public static function getModuleConfigInputfields(array $data) {
+        return array();
+    }
+}
