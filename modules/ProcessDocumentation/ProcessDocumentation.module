@@ -1,0 +1,468 @@
+<?php
+
+/**
+ * Process Documentation
+ * Allows you to make process pages and choose page content to display
+ * Build your help pages this way and they can be shown as links in the left sidebar.
+ * Includes css scoped to the displayed content to allow use of headings, lists, blockquotes and tables
+ *
+ * @author Macrura
+ * @copyright Macrura
+ *
+ * ProcessWire 2.x, 3.x
+ * Copyright (C) 2011 by Ryan Cramer
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ *
+ * http://www.processwire.com
+ *
+ */
+
+
+class ProcessDocumentation extends Process implements ConfigurableModule {
+
+	/**
+	 * getModuleInfo is a module required by all modules to tell ProcessWire about them
+	 *
+	 * @return array
+	 *
+	 */
+	public static function getModuleInfo() {
+
+		return array(
+			'title' => 'Process Documentation',
+			'version' => 104,
+			'summary' => 'A process you can use to create documentation pages.',
+			'author' => 'Macrura',
+			'singular' => true,
+			'autoload' => false,
+			'icon' => 'life-saver',
+			'permission' => 'documentation',
+			"permissions" => ["documentation" => "Access documentation pages."],
+			"permissionMethod" => "hasDocuPagePermission", 
+			"installs" => ["TextformatterMarkupCSS", "TextformatterJqueryUITabs"],
+			'requires'  => 'ProcessWire>=2.8.0, PHP>=5.4', // this should be tested
+		);
+	}
+
+
+	/**
+	 * Data as used by the get/set functions
+	 *
+	 */
+	protected $data = array();
+
+
+	protected static $configDefaults = array(
+		'body_field'        => '',
+		'custom_css'        => '',
+		'custom_override'   => '',
+		'tpl_dir'           => '',
+		'render_mode'       => '',
+	);
+
+
+
+	/**
+	 * Set our configuration defaults
+	 * 
+	 */
+	public function __construct() {
+		foreach(self::$configDefaults as $key => $value) {
+			$this->set($key, $value); 
+		}
+	}
+
+
+	public function init() {
+
+		parent::init();
+		$this->url = rtrim($this->config->urls->ProcessDocumentation, '/');
+	}
+
+	/**
+	 * This function is executed when a page with your Process assigned is accessed.
+	 *
+	 * This can be seen as your main or index function. You'll probably want to replace
+	 * everything in this function.
+	 *
+	 */
+	public function ___execute() {
+
+		if($this->input->get("downloadPDF")) {
+			return $this->renderDocPDF();
+		}
+
+		// Template Render Mode:
+		// 1) If there is a folder set
+		// 2) is there a matching process-name.php file?
+		// 3) is there a default.php file?
+		if($this->tpl_dir) {
+			$this->render_mode = 'Template';
+			$footer = $this->renderDocFooter();
+			$dir = $this->config->paths->templates . $this->tpl_dir . '/';
+			$file = $dir . $this->page->name . '.php';
+			if(file_exists($file)) {
+				return $this->renderPHPfile($file) . $footer;
+			} else {
+				$file = $dir . 'default.php';
+				if(file_exists($file)) {
+					return $this->renderPHPfile($file) . $footer;
+				}
+			}
+		}
+
+		// Field Render Mode...
+		$this->render_mode = 'Field';
+		return $this->renderDocPage();
+	}
+
+
+	public function renderPHPfile($file) {
+		if($this->page->doc_page) {
+			$this->page->doc_page->of(true);
+			$output = wireRenderFile($file, ['page' => $this->page->doc_page]);
+		} else {
+			$output = wireRenderFile($file); // no page parameter, for pure php markup
+		}
+		return $output ?: "The file did not output any content. Please check it.";
+	}
+
+
+
+	/**
+	 * getModuleInfo interface for required permission
+	 * 
+	 * @param array $data
+	 * @return bool
+	 *
+	 */
+	public static function hasDocuPagePermission(array $data) {
+
+		$page = $data['page'];
+		$user = $data['user'];
+		$wire = $data['wire'];
+
+		// if there is a specific permission setup for this settings page
+		$permission = $wire->permissions->get("$page->name"); 
+		if(!$permission->id) $permission = 'documentation';
+		return $user->hasPermission($permission); 
+
+	}
+
+	/**
+	 * Render the Doc page in Field Render mode
+	 * 
+	 * @return [type] [description]
+	 */
+	public function renderDocPage() {
+
+		$footer = $this->renderDocFooter();
+
+		//
+		if(!$this->page->doc_page) {
+			return "<p>No page has been selected to display. Please go to the process page and set the page to display.</p>" . $footer;
+		}
+
+		if(!$this->body_field) {
+			return "<p>No Field has been set. Please set the field to render in the module config.</p>" . $footer;
+		}
+
+		// CUSTOM CSS
+		if($this->custom_css) {
+			$files = $this->explode($this->custom_css);
+			foreach($files as $file) {
+				$filename = $this->file($file);
+				if(!$filename) continue;
+				$this->config->styles->add($filename);
+			}
+		}
+
+		if(!$this->custom_override) {
+			$this->config->styles->add($this->url . '/ProcessDocumentationDefault.css');
+		}
+
+		// OUTPUT...
+		$docPage = $this->page->doc_page;
+
+		// in case there are any textformatters, (hanna code)
+		$docBody = $docPage->getFormatted($this->body_field);
+
+		// this textformatter is installed by default, but in case the user has uninstalled it, check isInstalled.
+		// it is possible that the user will want to use a different textformatter, for example
+		// one that adds UiKit classes, instead of proprietary classes used by the default css.
+		if(wire('modules')->isInstalled('TextformatterMarkupCSS')) {
+			$mcss = wire('modules')->get('TextformatterMarkupCSS');
+			$mcss->format($docBody);
+		}
+
+		// this textformatter is installed by default, but in case the user has uninstalled it, check isInstalled.
+		// this textformatter should be applied via api, since it doesn't really have any use in the frontend.
+		if(wire('modules')->isInstalled('TextformatterJqueryUITabs')) {
+			$jqtabs = wire('modules')->get('TextformatterJqueryUITabs');
+			$jqtabs->format($docBody);
+		}
+
+		$out = '<div class="help-doc">' . $docBody . '</div>';
+
+		// footer
+		$out .= '<div class="help-footer">' . $footer . '</div>';
+
+		return $out;
+
+	}
+
+	public function renderDocPDF() {
+
+		$base = $this->config->paths->get('ProcessDocumentation');
+
+		$pdf = $this->modules->get('WirePDF');
+		$pdf->markupMain 	= wireRenderFile($base . 'pdf_templates/doc-page.php', ["page" => $this->page->doc_page]);
+		$pdf->markupHeader 	= $base . 'pdf_templates/_header.php';
+		$pdf->markupFooter 	= $base . 'pdf_templates/_footer.php';
+		$pdf->cssFile 		= $base . 'pdf_templates/styles.css';
+		$pdf->download($this->page->name . '.pdf', 'D');
+
+	}
+
+
+
+	public function renderDocFooter() {
+
+		$moduleInfo = $this->wire('modules')->getModuleInfoVerbose($this);
+		$footerText = "<i class='fa fa-life-ring'></i> Process Documentation v$moduleInfo[versionStr]";
+		$footerText .= " | " . $this->render_mode . ' Render Mode';
+
+		// Doc Page - Last updated and user
+		if($this->page->doc_page) {
+			$docPage = $this->page->doc_page;
+			$modified = date('m/d/y g:i A', $docPage->modified);
+			$modby = $docPage->modifiedUser->name;
+			$footerText .= " | Last updated by {$modby} at {$modified}";
+			// let users edit the content
+			$footerText .= " | <a href='{$this->page->doc_page->editUrl}' target='_blank'><i class='fa fa-pencil'></i> Edit Content</a>";
+		}
+
+		if($this->user->isSuperuser()) {
+			$footerText .= " | <a href='{$this->wire('page')->editUrl}' target='_blank'><i class='fa fa-cogs'></i> Edit Process Settings</a>";
+		}
+
+		if(wire('modules')->isInstalled('Pages2Pdf') && isset($docPage)) {
+			$footerText .= ' | <a href="' . $this->page->url . '?downloadPDF=' . $docPage->id . '"><i class="fa fa-download"></i> Download PDF</a>';
+		}
+
+		return '<p class="version detail">' . $footerText . '</p>';
+
+	}
+
+
+	/**
+	 * Helper function to convert newlines to array.
+	 *
+	 * @return array
+	 */
+
+	private function explode($string) {
+		return array_map('trim', explode("\n", $string));
+	}
+
+	/**
+	 * Helper function thats returns a valid relative URL or false.
+	 *
+	 * @return mixed
+	 */
+
+	private function file($string) {
+		$url = $this->config->urls->root;
+		$path = $this->config->paths->root;
+		bd($path . $string);
+		return file_exists($path . $string) ? $url . $string : false;
+	}
+
+
+	/**
+	 * Called only when your module is installed
+	 *
+	 * This version creates a new page with this Process module assigned.
+	 *
+	 */
+	public function ___install() {
+
+		// Check for existence of the field below, throw a message if it already exists
+		if($this->fields->get('doc_page') == NULL) {
+			// If it doesn't exist then carry on and create it
+			$field = new Field();
+			$field->type = $this->modules->get("FieldtypePage");
+			$field->name = 'doc_page';
+			$field->label = __('Select a PW page to display here.');
+			//$field->description = __('Description...');
+			$field->showIf = 'process=ProcessDocumentation';
+			$field->save();
+			$field->inputfield = 'InputfieldPageListSelect';
+			$field->derefAsPage = 1;
+			$field->labelFieldName = "title";
+			$field->save();
+		}
+
+		// add to admin template, set visibility to only for the process
+		$adminTemplate = $this->templates->get('admin');
+		$adminTemplate->fields->add($field);
+		$adminTemplate->fields->save();
+		$this->message(__("Added field 'doc_page' to admin."));
+
+	}
+
+	/**
+	 * Called only when your module is uninstalled
+	 * This should return the site to the same state it was in before the module was installed.
+	 *
+	 */
+	public function ___uninstall() {
+
+		// Remove the doc_page field
+		$adminTemplate = $this->templates->get('admin');
+		if($adminTemplate->fields->get('doc_page')) {
+			$adminTemplate->fields->remove($adminTemplate->fields->get('doc_page'));
+			$adminTemplate->fields->save();
+		}
+
+		// Remove doc_page
+		if($this->fields->get('doc_page')) {
+			$field = $this->fields->get('doc_page');
+			$this->fields->delete($field);
+		}
+
+	}
+
+	public static function getFormattedOptionName($obj) {
+		return !empty($obj->label) ? $obj->label . ' (' . $obj->name . ')' : $obj->name;
+	}
+
+	/**
+	 * Module configuration screen
+	 *
+	 */
+	public static function getModuleConfigInputfields(array $data) {
+
+		foreach(self::$configDefaults as $key => $value) {
+			if(!isset($data[$key])||$data[$key]=="") $data[$key] = $value;
+		}
+
+		/* BEGIN INPUTFIELDS
+		------------------------------------------------------------------------ */
+		$inputfields = new InputfieldWrapper();
+
+
+		// ------------------------------------------------------------------------
+		// 
+		// ------------------------------------------------------------------------
+		$f        = wire('modules')->get('InputfieldMarkup');
+		$f->name  = 'instructions';
+		$f->label = __('Process Documentation Instructions', __FILE__);
+		$markupText = "The process pages that you create using this process can freely switch between Field Render Mode and Template Render Mode.";
+		$markupText .= "<br>In Field Render Mode, you can use CK Editor, SimpleMDE, or plain textarea, but the output should be in HTML. The field is rendered with output formatting.";
+		$markupText .= "<br>In template render mode, output formatting is on for the page that is selected on the process.";
+		$f->markupText = $markupText;
+		$inputfields->add($f);
+
+
+		// ------------------------------------------------------------------------
+		// FIELD-RENDER MODE
+		// ------------------------------------------------------------------------
+		$fset = wire('modules')->get("InputfieldFieldset");
+		$fset->label = 'Field Render Mode (default)';
+
+			// ------------------------------------------------------------------------
+			// BODY FIELD
+			// ------------------------------------------------------------------------
+			$ta_fields = wire('fields')->find('type=FieldtypeTextarea');
+			if(count($ta_fields) > 0) {
+				$f              = wire('modules')->get('InputfieldSelect');
+				$f->name        = 'body_field';
+				$f->label       = __('Body Field', __FILE__);
+				$f->description = __('Please select the default field to use for document text.', __FILE__);
+				foreach ($ta_fields as $ta_field) {
+					$f->addOption($ta_field->name, self::getFormattedOptionName($ta_field));
+				}
+				if ($data[ $f->name ]) {
+					$f->attr('value', $data[ $f->name ]);
+				}
+			} else {
+				// add info that no URL type fields are available
+				$f        = wire('modules')->get('InputfieldMarkup');
+				$f->name  = 'no_body_fields';
+				$f->label = __('Body Fields', __FILE__);
+				$f->markupText = __('There are no textarea fields available to use.', __FILE__);
+			}
+
+			$fset->add($f);
+
+			// ------------------------------------------------------------------------
+			// MARKUP ADVANCED
+			// ------------------------------------------------------------------------
+			$f        = wire('modules')->get('InputfieldMarkup');
+			$f->name  = 'field_render_advanced';
+			$f->label = __('Field Render Mode - Advanced Settings', __FILE__);
+			$f->markupText = __('The settings below apply to the styling for the page when using field render mode.', __FILE__);
+			$fset->add($f);
+
+			// ------------------------------------------------------------------------
+			// CUSTOM CSS FILES
+			// ------------------------------------------------------------------------
+			$f = wire('modules')->get('InputfieldTextarea');
+			$f->attr('name', 'custom_css');
+			$f->attr('value', $data['custom_css']);
+			$f->label = __('Custom CSS Files');
+			$f->description = __('List of custom CSS files to load for the doc pages, relative to site installation.', __FILE__);
+			$f->notes = __('You can specify files to load on all process pages, that either complement or replace the default css.', __FILE__);
+			$f->rows = 4;
+			$f->collapsed = Inputfield::collapsedBlank;
+			$fset->add($f);
+
+			// ------------------------------------------------------------------------
+			// CUSTOM OVERRIDE
+			// ------------------------------------------------------------------------
+			$f = wire('modules')->get('InputfieldCheckbox'); 
+			$f->attr('name', 'custom_override');
+			$f->attr('value', 1); 
+			if($data['custom_override']) $f->attr('checked', 'checked'); 
+			$f->label = __('Disable Default CSS.'); 
+			$f->description = __('Check this box to prevent the default CSS file from loading. (If you have populated the field above, or are loading the css files through some other means, e.g. Admin Custom Files).'); 
+			$f->notes = __('It is recommended to copy the stylesheet that comes with the module and use as a starting point.', __FILE__);
+			$f->collapsed = Inputfield::collapsedBlank;
+			$fset->add($f);
+
+
+		$inputfields->add($fset);
+
+		// ------------------------------------------------------------------------
+		// FIELD-RENDER MODE
+		// ------------------------------------------------------------------------
+		$fset = wire('modules')->get("InputfieldFieldset");
+		$fset->label = 'Template Render Mode';
+
+			// ------------------------------------------------------------------------
+			// FOLDER FOR CUSTOM RENDERING TEMPLATES
+			// ------------------------------------------------------------------------
+			$f = wire('modules')->get('InputfieldText');
+			$f->attr('name', 'tpl_dir');
+			$f->attr('value', $data['tpl_dir']);
+			$f->label = __('Directory for custom rendering files.');
+			$f->description = __('Enter the folder name (e.g. DocumentTemplates) in the templates directory.', __FILE__);
+			$f->notes = __('Match the name of the template file to the process page name to have the module render that template file for the related process page. You may also specify a default.php file to use for all pages to render from. If you are only using template render mode, you do not need to specify a field in the field render mode setting.', __FILE__);
+			//$f->rows = 4;
+			$f->collapsed = Inputfield::collapsedBlank;
+			$fset->add($f);
+
+
+		$inputfields->add($fset);
+
+		// ------------------------------------------------------------------------
+		return $inputfields;
+
+
+	}
+
+
+
+
+}

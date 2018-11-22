@@ -36,6 +36,7 @@ $config->debug = false;
 
 $config->prependTemplateFile = '_init.php';
 $config->appendTemplateFile = '_main.php';
+$config->defaultAdminTheme = 'AdminThemeUikit';
 
 
 /*** INSTALLER CONFIG ********************************************************************/

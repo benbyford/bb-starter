@@ -29,3 +29,7 @@ $homepage = $pages->get('/');
 
 // Include shared functions
 include_once("./_func.php");
+
+// CSS prefetch urls to be injected into the head
+$mainStyleURL = AIOM::CSS('styles/main.less');
+$googleFontsURL = "http://fonts.googleapis.com/css?family=Quattrocento";

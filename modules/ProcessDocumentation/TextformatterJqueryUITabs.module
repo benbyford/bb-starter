@@ -1,0 +1,119 @@
+<?php
+
+/**
+ * ProcessWire Jquery UI Tabs Textformatter
+ *
+ * http://processwire.com
+ *
+ */
+
+class TextformatterJqueryUITabs extends Textformatter {
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'PW Native JqueryUI Tabs', 
+			'version' => 1, 
+			'summary' => "Provides PW native JqueryUI Tabs from a shortcode in body.", 
+			'href' => 'https://github.com', 
+			'author' => 'Macrura', 
+		); 
+	}
+
+
+   /**
+     * Format the input string
+     *
+     * @param string $str The block of text to parse
+     *
+     * The incoming string is replaced with the formatted version of itself.
+     **/
+    public function format(&$str) {
+
+		if(!preg_match("#{tab=.+?}#s", $str)) return;
+
+		// TABS
+        $b=1;
+		unset($tabs);
+		if(preg_match_all("/{tab=.+?}{tab=.+?}|{tab=.+?}|{\/tabs}/", $str, $matches, PREG_PATTERN_ORDER) > 0) {
+			//bd($matches);
+			foreach($matches[0] as $match) {
+				if($b==1 && $match!="{/tabs}") {
+					$tabs[] = 1;
+					$b=2;
+				} elseif($match=="{/tabs}"){
+					$tabs[]=3;
+					$b=1;
+				} elseif(preg_match("/{tab=.+?}{tab=.+?}/", $match)){
+					$tabs[]=2;
+					$tabs[]=1;
+					$b=2;
+				} else {
+					$tabs[]=2;
+				}
+			}
+		}
+
+		@reset($tabs);
+		$tabscount = 0;
+
+		if(preg_match_all("/{tab=.+?}|{\/tabs}/", $str, $matches, PREG_PATTERN_ORDER) > 0) {
+			$tabsList =[];
+			$tabsContent = '';
+			$tabid=1;
+			foreach($matches[0] as $match) {
+				if($tabs[$tabscount]==1) {
+					$match = str_replace("{tab=", "", $match);
+					$match = str_replace("}", "", $match);
+					$tabsList[] = $match;
+					// $match holds the title of the first tab
+					$str = str_replace("{tab=".$match."}", "{{tabslist-$tabid}}{{tabcontent-$tabscount}}", $str);
+					$tabid++;
+				} elseif($tabs[$tabscount]==2) {
+					$match = str_replace("{tab=", "", $match);
+					$match = str_replace("}", "", $match);
+					$tabsList[] = $match;
+					$str = str_replace("{tab=".$match."}", "{{tabcontent-$tabscount}}", $str);
+				} elseif($tabs[$tabscount]==3) {
+					$str = str_replace("{/tabs}", '{{tabsend}}', $str);
+				}
+				$tabscount++;
+			}
+
+			// Create the UL for the tabs
+			$tabsListOut = '<div id="tabs"><ul>';
+			foreach($tabsList as $key => $value) {
+				$tabsListOut .= "<li><a href='#tab-{$key}'>{$value}</a></li>";
+			}
+			$tabsListOut .= '</ul>';
+
+			// replace the content separator tokens with open/close divs.
+			$searchRep = [];
+			foreach($tabsList as $key => $value) {
+				$closeDiv = $key != 0 ? '</div>' : '';
+				$searchRep['{{tabcontent-' . $key . '}}'] = "{$closeDiv}<div id='tab-{$key}'>";
+			}
+
+			// we can only support 1 set of tabs per page using this setup
+
+			// for use in non-jquery ui scenarios, allow the user to:
+			// 1) set the class on the <ul>, e.g. "nav-text-tabs"
+			// 2) use data-toggle-tab attribute on the anchor
+			// 3) set the class on the indivdual tab divs
+			// 4) Allow the tab content divs to be within another containing div
+			// 5) possibly use a name sanitized id instead of numeric
+			// 6) do not include the js init code.
+
+			$searchRep['{{tabslist-1}}'] = $tabsListOut;
+			$script = '<script>$(document).ready(function () {$("#tabs").tabs();});</script>';
+			$searchRep['{{tabsend}}'] = '</div></div>' . $script . '<!-- end tabs -->';
+			// cleanup <p> tags fish
+			$searchRep['></p>'] = '>';
+			$searchRep['<p><'] = '<';
+
+			$str = str_replace(array_keys($searchRep), $searchRep, $str);
+
+		}
+
+    } // End function
+
+} // End class

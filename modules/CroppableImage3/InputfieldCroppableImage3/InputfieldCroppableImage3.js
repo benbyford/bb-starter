@@ -31,7 +31,7 @@ $(function () {
             }
 
             $elements.tooltip({
-                items: 'a',
+                items: 'a:hover',
                 content: function() {
                     var $link = $(this),
                         suffix = $link.data('suffix'),
@@ -58,8 +58,10 @@ $(function () {
                 },
                 tooltipClass: 'croppableTooltip',
                 track: true,
+                hide: false,
                 position: {
-                    my: 'center bottom-25'
+                    my: 'center bottom-25',
+                    collision: 'none'
                 }
             });
         };
@@ -71,11 +73,42 @@ $(function () {
 });
 
 
-function caiCloseReviewWindow() {
-    var selector = "button.ui-button.ui-dialog-titlebar-close";
-    $(selector).click();
-    $('.InputfieldImage .cropLinks a').tooltip('disable');
-    croppableTooltip();
-    $('.InputfieldImage .cropLinks a').tooltip('enable');
-}
+function caiCloseReviewWindow(imgUrl) {
+    var selector = "button.ui-button.ui-dialog-titlebar-close",
+        $cropLinks = $('.InputfieldImage .cropLinks a');
 
+    $(selector).click();
+
+    if (!$cropLinks.data('ui-tooltip')) {
+        $cropLinks.tooltip('disable');
+    }
+
+    croppableTooltip();
+    $cropLinks.tooltip('enable');
+
+    $('.InputfieldImage .cropLinks a[data-croppable] img').each(function() {
+
+        // update only current image
+        if(imgUrl.indexOf($(this).parent('a').attr('data-image')) === -1) {
+            return true;    // continue
+        } else {
+            var src = $(this).attr('src'),
+                newSrc,
+                dimensions = '.0x48';
+        }
+
+        if(src.indexOf(dimensions) !== -1) {
+            newSrc = imgUrl;
+        } else {
+            if(src.indexOf('?v=') === -1) {
+                // there is no ?v= present, add ?v=1
+                newSrc = src + '?v=1';
+            } else {
+                // replace ?v=1 with ?v=2, or vice versa
+                newSrc = (src.indexOf('?v=1') !== -1) ? src.replace('?v=1', '?v=2') : src.replace('?v=2', '?v=1');
+            }
+        }
+
+        $(this).attr('src', newSrc);
+    });
+}

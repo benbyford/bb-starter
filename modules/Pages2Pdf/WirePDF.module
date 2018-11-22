@@ -1,0 +1,353 @@
+<?php
+
+/**
+ * Module WirePDF
+ *
+ * Wrapper around mPDF library by Ian Back
+ *
+ * @see http://www.mpdf1.com/mpdf/index.php
+ *
+ * @author Stefan Wanzenried <stefan.wanzenried@gmail.com>
+ * @version 1.0.4
+ */
+class WirePDF extends WireData implements Module, ConfigurableModule
+{
+
+    /**
+     * @var mPDF
+     */
+    protected $pdf;
+
+    /**
+     * Default config
+     *
+     * @var array
+     */
+    protected static $config = array(
+        'markupMain' => '',
+        'markupHeader' => '',
+        'markupFooter' => '',
+        'mode' => 'c',
+        'pageOrientation' => 'P',
+        'pageFormat' => 'A4',
+        'topMargin' => 30,
+        'rightMargin' => 15,
+        'bottomMargin' => 20,
+        'leftMargin' => 15,
+        'headerMargin' => 5,
+        'footerMargin' => 10,
+        'font' => 'Helvetica',
+        'fontSize' => 12,
+        'author' => '',
+        'headerFirstPage' => 1,
+        'cssFile' => '',
+        'css' => '',
+    );
+
+
+    public function __construct()
+    {
+        foreach (self::$config as $k => $v) {
+            $this->set($k, $v);
+        }
+    }
+
+
+    /**
+     * @return array
+     */
+    public static function getModuleInfo()
+    {
+        return array(
+            'title' => 'WirePDF',
+            'summary' => __('Wrapper class around the library mPDF to create PDF files, optimized for ProcessWire'),
+            'version' => 104,
+            'author' => 'Stefan Wanzenried (Wanze)',
+            'href' => 'http://processwire.com/talk/topic/3008-module-pages2pdf/',
+        );
+    }
+
+
+    public function init()
+    {
+        // Set the cache path of mPDF to /site/assets/cache
+        define('_MPDF_TEMP_PATH', $this->wire('config')->paths->cache . 'WirePDF/');
+        define('_MPDF_TTFONTDATAPATH', $this->wire('config')->paths->cache . 'WirePDF/');
+        require_once(dirname(__FILE__) . '/mpdf/mpdf.php');
+    }
+
+
+    /**
+     * @param string $key
+     * @return mixed|mPDF|null
+     */
+    public function get($key)
+    {
+        switch ($key) {
+            case 'pdf':
+            case 'mpdf':
+                return $this->mPDF();
+        }
+
+        return parent::get($key);
+    }
+
+
+    /**
+     * @param string $key
+     * @param mixed $value
+     * @return $this
+     * @throws WireException
+     */
+    public function set($key, $value)
+    {
+        switch ($key) {
+            case 'pdf':
+            case 'mpdf':
+                if (!$value instanceof mPDF) {
+                    throw new WireException("$key needs to be an instance of mPDF");
+                }
+                $this->pdf = $value;
+                break;
+        }
+
+        return parent::set($key, $value);
+    }
+
+
+    /**
+     * Download PDF file
+     *
+     * @param string $filename Name of PDF file (without path)
+     * @param string $mode 'D': Send file to browser and force download
+     *                     'I': Send file inline to browser
+     */
+    public function download($filename, $mode = 'I')
+    {
+        $this->writePDF();
+        $this->mPDF()->Output($filename, $mode);
+    }
+
+
+    /**
+     * Save PDF file
+     *
+     * @param string $filepath Path and filename of PDF file
+     * @return $this
+     */
+    public function save($filepath)
+    {
+        $this->writePDF();
+        $this->mPDF()->Output($filepath, 'F');
+
+        return $this;
+    }
+
+
+    /**
+     * Act as a proxy object for mPDF, which allows to call methods on a mPDF instance directly.
+     *
+     * @param string $method
+     * @param array $args
+     * @return mixed
+     */
+    public function __call($method, $args)
+    {
+        $hookable = array('initPDF'); // Skip local hooks
+        if (!in_array($method, $hookable) && method_exists($this->mPDF(), $method)) {
+            return call_user_func_array(array($this->mPDF(), $method), $args);
+        }
+
+        return parent::__call($method, $args);
+    }
+
+
+    /**
+     * Write current data to mPDF instance
+     */
+    protected function ___writePDF()
+    {
+        $this->mPDF()->SetAuthor($this->get('author'));
+        if ($markup = $this->getMarkup('markupHeader')) {
+            $this->mPDF()->SetHTMLHeader($markup, '', (bool) $this->get('headerFirstPage'));
+        }
+        if ($markup = $this->getMarkup('markupFooter')) {
+            $this->mPDF()->SetHTMLFooter($markup);
+        }
+        $css = (is_file($this->get('cssFile'))) ? file_get_contents($this->get('cssFile')) : $this->get('css');
+        if ($css) {
+            $this->mPDF()->WriteHTML($css, 1);
+            $this->mPDF()->WriteHTML($this->getMarkup(), 2);
+        } else {
+            $this->mPDF()->WriteHTML($this->getMarkup());
+        }
+    }
+
+
+    /**
+     * @return mPDF
+     */
+    protected function mPDF()
+    {
+        if ($this->pdf !== null) {
+            return $this->pdf;
+        }
+
+        return $this->initPDF();
+    }
+
+
+    /**
+     * Setup mPDF
+     *
+     * @throws WireException
+     * @return mPDF
+     */
+    protected function ___initPDF()
+    {
+        $this->pdf = new mPDF(
+            $this->get('mode'),
+            $this->get('pageFormat'),
+            $this->get('fontSize'),
+            $this->get('font'),
+            $this->get('leftMargin'),
+            $this->get('rightMargin'),
+            $this->get('topMargin'),
+            $this->get('bottomMargin'),
+            $this->get('headerMargin'),
+            $this->get('footerMargin'),
+            $this->get('pageOrientation')
+        );
+        // Need to pass orientation again, constructor of mPDF does reset landscape to portrait -.-
+        $this->pdf->AddPage($this->get('pageOrientation'));
+
+        return $this->pdf;
+    }
+
+
+    /**
+     * Get markup of PDF
+     *
+     * @param string $section markupMain|markupHeader|markupFooter
+     * @return string
+     * @throws WireException
+     */
+    protected function getMarkup($section = 'markupMain')
+    {
+        $markup = $this->get($section);
+        $return = '';
+        if ($markup instanceof TemplateFile) {
+            $return = $markup->render();
+        } elseif (is_file($markup)) {
+            $template_file = new TemplateFile($markup);
+            $return = $template_file->render();
+        } elseif (is_string($markup)) {
+            $return = $markup;
+        }
+
+        return $return;
+    }
+
+
+    /**
+     * Return an InputfieldsWrapper of Inputfields used to configure the class
+     *
+     * @param array $data Array of config values indexed by field name
+     * @return InputfieldWrapper
+     *
+     */
+    public static function getModuleConfigInputfields(array $data)
+    {
+        $data = array_merge(self::$config, $data);
+        $modules = wire('modules');
+        $fields = new InputfieldWrapper();
+
+        $field = $modules->get('InputfieldText');
+        $field->label = __('Page orientation');
+        $field->description = __('P=Portrait, L=Landscape');
+        $field->name = 'pageOrientation';
+        $value = (in_array($data['pageOrientation'], array('P', 'L'))) ? $data['pageOrientation'] : 'P';
+        $field->value = $value;
+        $fields->append($field);
+
+        $field = $modules->get('InputfieldText');
+        $field->label = __('Page format');
+        $field->name = 'pageFormat';
+        $field->value = $data['pageFormat'];
+        $fields->append($field);
+
+        $margins = array(
+            'leftMargin' => __('Left margin (mm)'),
+            'topMargin' => __('Top margin (mm)'),
+            'rightMargin' => __('Right margin (mm)'),
+            'bottomMargin' => __('Bottom margin (mm)'),
+        );
+        foreach ($margins as $name => $label) {
+            $field = $modules->get('InputfieldFloat');
+            $field->label = $label;
+            $field->name = $name;
+            $field->value = $data[$name];
+            $field->columnWidth = 50;
+            $fields->append($field);
+        }
+
+        $field = $modules->get('InputfieldFloat');
+        $field->label = __('Header margin top (mm)');
+        $field->name = 'headerMargin';
+        $field->value = $data['headerMargin'];
+        $field->columnWidth = 50;
+        $fields->append($field);
+
+        $field = $modules->get('InputfieldFloat');
+        $field->label = __('Footer margin bottom (mm)');
+        $field->name = 'footerMargin';
+        $field->value = $data['footerMargin'];
+        $field->columnWidth = 50;
+        $fields->append($field);
+
+        $field = $modules->get('InputfieldCheckbox');
+        $field->label = __('Print header on first page');
+        $field->description = __('If there is header markup passed to WirePDF, print the header also on the first page');
+        $field->name = 'headerFirstPage';
+        $field->value = $data['headerFirstPage'];
+        if ($data['headerFirstPage']) $field->checked = 'checked';
+        $fields->append($field);
+
+        $field = $modules->get('InputfieldText');
+        $field->label = __('Mode');
+        $field->notes = __("Recommended to use 'c' for Core. Can be changed to support additional languages/fonts, see: http://mpdf1.com/manual/index.php?tid=184");
+        $field->value = $data['mode'];
+        $field->name = 'mode';
+        $fields->append($field);
+
+        $field = $modules->get('InputfieldText');
+        $field->label = __('Default font');
+        $field->description = __("The following fonts are included/supported when using mPDF with the core mode ('c'): Helvetica/Arial and Times/Courier");
+        $field->notes = __("If you need other fonts or enhanced support, e.g. for Arabic fonts, you can change the mode and try to use 'DejaVuSans' as font. Please take a look at the documentaion of mpdf: http://mpdf1.com/manual/index.php?tid=54");
+        $field->value = $data['font'];
+        $field->name = 'font';
+        $fields->append($field);
+
+        $field = $modules->get('InputfieldInteger');
+        $field->label = __('Default font size');
+        $field->description = __('Default font size used in PDF files (pt). Can be overridden with CSS');
+        $field->value = $data['fontSize'];
+        $field->name = 'fontSize';
+        $fields->append($field);
+
+        $field = $modules->get('InputfieldText');
+        $field->label = __('CSS File');
+        $field->description = __('Enter path and filename of a CSS file containing default styles to be used by mPDF for the HTML markup');
+        $field->value = $data['cssFile'];
+        $field->name = 'cssFile';
+        $fields->append($field);
+
+        $field = $modules->get('InputfieldText');
+        $field->label = __('Author');
+        $field->value = $data['author'];
+        $field->name = 'author';
+        $fields->append($field);
+
+        return $fields;
+    }
+}

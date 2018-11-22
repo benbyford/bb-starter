@@ -4,14 +4,17 @@
     <meta http-equiv="content-type" content="text/html; charset=utf-8" />
     <title><?php echo $title; ?></title>
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=1" />
+    <link rel="preload" href="<?php echo $mainStyleURL?>" as="style">
+    <link rel="preload" href="<?php echo $googleFontsURL?>" as="style">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5, user-scalable=1" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content=""> <!--// i.e. black -->
     <link rel="apple-touch-startup-image" href="/startup.png"><!--// startup image on iPhone app mode -->
 
     <meta name="robots" content="index, follow">
 
-    <meta name="keywords" content="echo $homepage->keywords;">
+    <meta name="keywords" content="<?php echo $homepage->keywords;?>">
     <meta name="description" content="<?php echo $summary; ?>" />
     <meta name="generator" content="<?php echo $homepage->title; ?>">
 
@@ -40,9 +43,12 @@
     <link rel="alternate" type="application/rss+xml" title="Example (RSS 2.0)" href="<?php echo $pages->get('/')->url; ?>blog-rss-feed/">
 
     <!-- // fonts -->
-    <link href='http://fonts.googleapis.com/css?family=Quattrocento' rel='stylesheet' type='text/css'>
+    <link href='<?php echo $googleFontsURL?>' rel='stylesheet' type='text/css'>
 
     <!-- // minified styles -->
-    <link rel="stylesheet" href="<?php echo AIOM::CSS(array('styles/vendor/font-awesome.css','styles/main.less')); ?>">
+    <link rel="stylesheet" href="<?php echo $mainStyleURL?>">
 </head>
-<body class="<?php if($sidebar) echo "has-sidebar "; ?>">
+<body class="<?php
+    echo "template-" . $page->template;
+    if($sidebar) echo " has-sidebar";
+?>">

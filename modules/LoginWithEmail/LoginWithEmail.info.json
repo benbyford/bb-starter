@@ -1,0 +1,10 @@
+{
+	"title": "Login With Mail",
+	"summary": "Support module providing dynamic user roles for ProcessWire.",
+	"href": "https://github.com/noelboss/LoginWithEmail",
+	"version": "0.0.3",
+	"author": "Noël Bossart",
+	"autoload": true,
+	"singular": true,
+	"icon": "sign-in"
+}

@@ -1,0 +1,68 @@
+<?php
+
+namespace ProcessWire;
+
+/**
+ * ProcessWire 'Login With Email' module.
+ *
+ * Hooks into Processwire login to allow login with user email address
+ *
+ * See README file for further links regarding module development.
+ *
+ * This file is licensed under the GNU license see
+ * LICENSE
+ *
+ * ProcessWire 3.x, Copyright 2017 by Noel Bossart
+ * https://processwire.com
+ */
+class LoginWithEmail extends WireData implements Module
+{
+    /**
+     * Called once only when installing the module.
+     *
+     * Creates a page for this process and a permission for the module.
+     */
+    public function ___install()
+    {
+        $this->session('Users can now login with their email.');
+    }
+
+    /**
+     * Initialize the module.
+     *
+     * ProcessWire calls this when the module is loaded. For 'autoload' modules, this will be called
+     * when ProcessWire's API is ready. As a result, this is a good place to attach hooks.
+     */
+    public function init()
+    {
+        // change login name input label to e-mail-address
+        wire()->addHookAfter('ProcessLogin::buildLoginForm', function (HookEvent $event) {
+            $event->return->get('login_name')->set('label', $event->_('Username or email address'));
+        });
+
+        // hook into session::login to get user by mail
+        // this works regardless of the name of the input field
+        wire()->addHookBefore('Session::login', function (HookEvent $event) {
+            // grab the login name from input (backend login) and check if is mail
+            $mail = wire('input')->post->email('login_name');
+
+            // if not backendlogin its an api login, grab directly from arguments
+            $mail = $mail ? $mail : $mail = wire('sanitizer')->email($event->arguments(0));
+
+            // do something only if login is valid email (not username)
+            if ($mail) {
+                // check if a user with the email exists
+
+                $matches = $this->wire('users')->find("include=all, email=$mail");
+                $qty = $matches->count();
+
+                // if valid user set login name argument
+                if ($qty === 1) {
+                    $event->setArgument('name', $matches->first()->name);
+                } elseif ($qty > 1) {
+                    $this->error($this->_('Cannot login because more than one account uses this email address.'));
+                }
+            }
+        });
+    }
+}

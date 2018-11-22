@@ -1,0 +1,315 @@
+@import url('https://fonts.googleapis.com/css?family=Libre+Franklin:400,400i,700,700i');
+
+/*=======FONTS & STYLING=======*/
+
+.help-doc {
+   font-family: 'Libre Franklin', sans-serif;
+   -moz-osx-font-smoothing: grayscale;
+  color:#2B2B2B;
+}
+
+#main #headline {
+  padding: 15px 0;
+  background: #2B2B2B;
+}
+
+  #main #headline h1#title {
+    float: none;
+    color: #A8A8A8;
+    font-family: 'Libre Franklin', sans-serif;
+    font-size: 18px;
+    margin-left: 30px;
+  }
+
+
+.help-doc strong {
+	font-weight: 700;
+}
+
+.help-doc em {
+	font-style: italic;
+}
+
+/*=======LAYOUT=======*/
+
+.help-doc {
+  padding-bottom: 20px;
+}
+
+/*=======LINKS=======*/
+
+/*.help-doc a {
+  color: #337ab7;
+  text-decoration: none;
+}
+
+.help-doc a:hover,
+.help-doc a:focus {
+  color: #23527c;
+  text-decoration: underline;
+}
+.help-doc a:focus {
+  outline: thin dotted;
+  outline: 5px auto -webkit-focus-ring-color;
+  outline-offset: -2px;
+}*/
+
+/*=======HR=======*/
+
+.help-doc hr {
+  margin-top: 20px;
+  margin-bottom: 20px;
+  border: 0;
+  border-top: 1px solid #c2c2c2;
+}
+
+/*=======HEADINGS=======*/
+.help-doc h1,
+.help-doc h2,
+.help-doc h3,
+.help-doc h4,
+.help-doc h5,
+.help-doc h6 {
+	line-height: 1.1;
+}
+
+.help-doc h1,
+.help-doc h2,
+.help-doc h3 {
+  margin-top: 10px;
+  margin-bottom: 25px;
+}
+
+.help-doc h4,
+.help-doc h5,
+.help-doc h6 {
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
+.help-doc h1 {font-size: 36px;}
+.help-doc h2 {font-size: 30px;}
+.help-doc h3 {font-size: 24px;}
+.help-doc h4 {font-size: 18px;}
+.help-doc h5 {font-size: 14px;}
+.help-doc h6 {font-size: 12px;}
+.help-doc p  {margin: 0 0 20px;}
+
+.help-doc h1 {
+	font-family: inherit;
+	font-size: 28px;
+	border-bottom: 1px solid #DDD;
+	padding-bottom: 16px;
+	text-transform: uppercase;
+}
+
+.help-doc h1 i {
+	color: #5CC7B2;
+	font-size: 28px !important;
+}
+
+.help-doc h1 span a i {
+	color: #4bc100;
+	font-size: 18px !important;
+}
+
+/*=======BLOCKQUOTE=======*/
+
+.help-doc blockquote {
+	padding: 10px 20px;
+	margin: 20px 0px 20px;
+	font-size: 17.5px;
+	border-left: 5px solid #8A8489;
+}
+
+.help-doc blockquote p {
+	margin: 0;
+  font-style: italic;
+}
+
+/* ========================================================================
+   Component: Table
+ ========================================================================== */
+/*
+ * 1. Remove most spacing between table cells.
+ * 2. Block element behavior
+ * 3. Style
+ */
+.help-doc table {
+  /* 1 */
+  border-collapse: collapse;
+  border-spacing: 0;
+  /* 2 */
+  width: 100%;
+  /* 3 */
+  margin-bottom: 15px;
+}
+/*
+ * Add margin if adjacent element
+ */
+* + .help-doc table {
+  margin-top: 15px;
+}
+.help-doc table th,
+.help-doc table td {
+  padding: 8px 8px;
+  border-bottom: 1px solid #dddddd;
+}
+/*
+ * Set alignment
+ */
+.help-doc table th {
+  text-align: left;
+}
+.help-doc table td {
+  vertical-align: top;
+}
+.help-doc table thead th {
+  vertical-align: bottom;
+}
+/*
+ * Caption and footer
+ */
+.help-doc table caption,
+.help-doc table tfoot {
+  font-size: 12px;
+  font-style: italic;
+}
+.help-doc table caption {
+  text-align: left;
+  color: #999999;
+}
+
+
+/* Sub-modifier: `uk-table-middle`
+ ========================================================================== */
+.help-doc table-middle,
+.help-doc table-middle td {
+  vertical-align: middle !important;
+}
+/* Modifier: `uk-table-striped`
+ ========================================================================== */
+.help-doc table-striped tbody tr:nth-of-type(odd) {
+  background: #fafafa;
+}
+/* Modifier: `uk-table-condensed`
+ ========================================================================== */
+.help-doc table-condensed td {
+  padding: 4px 8px;
+}
+/* Modifier: `uk-table-hover`
+ ========================================================================== */
+.help-doc table-hover tbody tr:hover {
+  background: #f0f0f0;
+}
+
+.help-doc {
+  overflow: auto;
+}
+
+.help-footer {
+  padding: 10px;
+  border-top: 1px solid #d9e1ea;
+  margin: 0 -1.5em -3.5em -1.5em;
+  padding-left: 1.5em;
+}
+
+
+/* TABS - JQUERY UI TABS STYLING FOR RENO THEME
+ ========================================================================== */
+
+.help-doc .ui-widget-content {
+    border: none;
+}
+
+.help-doc .ui-tabs .ui-tabs-nav {
+    margin: 0;
+    padding: 0;
+}
+
+.help-doc .ui-tabs-panel {
+  overflow: auto;
+}
+
+.help-doc .ui-tabs-panel.ui-widget-content {
+    border: 1px solid #d9e1ea;
+    border-top: none;
+}
+
+.help-doc .ui-widget-header {
+    border: none;
+    background: none;
+    border-bottom: 1px solid #d9e1ea;
+}
+
+  .help-doc .ui-widget-header li {
+      background: none !important;
+      background: #fff;
+      border: none;
+      border: 1px solid #fff !important;
+      margin:0;
+  }
+
+  .help-doc .ui-widget-header li a {
+      padding: .75em 1em;
+      color: #e83561 !important;
+  }
+
+  .help-doc .ui-widget-header li.ui-state-active {
+      border: 1px solid #d9e1ea;
+      border-radius: 3px 3px 0 0;
+      border-top-color: #d9e1ea !important;
+      border-right-color: #d9e1ea !important;
+      border-bottom-color: #FFF !important;
+      border-left-color: #d9e1ea !important;
+  }
+
+  .help-doc .ui-widget-header li a,
+  .help-doc li.ui-state-default a, 
+  .help-doc .ui-widget-content li.ui-state-default a {
+      color: #000;
+  }
+
+  .help-doc .ui-widget-header li.ui-state-active a {
+     color: #000 !important;
+  }
+
+  .help-doc .ui-widget-header li.ui-state-hover {
+      background: none !important;
+  }
+
+  .help-doc .ui-widget-header li.ui-state-hover a {
+      color: #bb153e !important;
+      cursor: pointer;
+  }
+
+  .help-doc .ui-widget-header li.ui-state-focus a:focus {
+      outline: none;
+  }
+
+/* LISTS
+ ========================================================================== */
+
+ol.pd-list {
+    list-style-type: inherit;
+    padding-left: 35px;
+    margin-bottom: 15px;
+
+}
+ol.pd-list li {
+    margin: .2em 0;
+}
+
+ul.pd-list {
+    list-style-type: disc !important;
+    padding-left: 35px;
+    margin-bottom: 15px;
+
+}
+ul.pd-list li {
+    margin: .2em 0;
+    display: list-item;
+}
+
+
+

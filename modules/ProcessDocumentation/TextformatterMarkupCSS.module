@@ -1,0 +1,65 @@
+<?php
+
+/**
+ * ProcessWire Tabs Plugin
+ *
+ * ProcessWire 2.x 
+ * Copyright (C) 2014 by Ryan Cramer 
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ * 
+ * http://processwire.com
+ *
+ */
+
+class TextformatterMarkupCSS extends Textformatter {
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'Markup CSS (Internal Textformatter for Process Documentation).', 
+			'version' => 1, 
+			'summary' => "Adds css classes to body text for use in admin (for styling elements like ul, ol, blockquote, tables).", 
+			'href' => 'https://github.com', 
+			'author' => 'Macrura', 
+		); 
+	}
+
+
+    public function format(&$str) {
+        //check if simple_html_dom.php is included by another module before - prevent double including
+        if (function_exists('file_get_html')) { //check for the file_get_html function
+            //do nothing
+        } else {
+            require_once 'simple_html_dom.php';
+        }
+        $html = str_get_html($str);
+        if (!empty($html)) {
+
+            foreach (($html->find('ul')) as $ul) {
+                $ul->class = 'pd-list';
+            }
+
+            foreach (($html->find('ol')) as $ul) {
+                $ul->class = 'pd-list';
+            }
+
+            foreach (($html->find('blockquote')) as $bq) {
+                $bq->class = 'pd-blockquote';
+            }
+
+            foreach (($html->find('table')) as $table) {
+                $table->class = 'pd-table';
+            }
+
+            foreach (($html->find('img')) as $img) {
+                if($img->class) {
+                    $img->class .= ' pd-image';
+                } else {
+                    $img->class = 'pd-image';
+                }
+            }
+
+            $str = $html;
+        }
+    }
+
+}

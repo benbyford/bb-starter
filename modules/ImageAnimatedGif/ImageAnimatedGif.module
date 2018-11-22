@@ -11,7 +11,7 @@
 *  This module supports resizing and cropping of animated GIFs when using GD-Library
 *  (The GD-Library does not support this)
 *
-*  Version 2.0.1
+*  Version 2.0.2
 *
 *
 *  This module is completely based upon the fantastic work of
@@ -50,7 +50,35 @@ class ImageAnimatedGif extends WireData implements Module {
 
 
     public function init() {
+        if(class_exists('ImageSizerEngineAnimatedGif') || class_exists('ProcessWire\ImageSizerEngineAnimatedGif')) {
+            if($this->modules->isInstalled('ImageSizerEngineAnimatedGif')) {
+                return; // the core support is already installed
+            }
+            $this->modules->get('ImageSizerEngineAnimatedGif');  // try to install core support
+            if($this->modules->isInstalled('ImageSizerEngineAnimatedGif')) {
+                $this->warning('Installed Image Rendering Core Support Module for Animated GIFs!');
+                $this->warning('The ImageAnimatedGif Module is obsolete now. Please uninstall it under site/modules/' . basename(dirname(__FILE__)));
+                return; // now the core support is installed
+            }
+        }
+        // there is no core support for Animated GIFs, we take it over with this third party module
         $this->pages->addHookBefore('ImageSizer::resize', $this, 'processEventBefore', array('priority'=>1));
+    }
+
+
+    public function ___install() {
+        if(class_exists('ImageSizerEngineAnimatedGif') || class_exists('ProcessWire\ImageSizerEngineAnimatedGif')) {
+            if($this->modules->isInstalled('ImageSizerEngineAnimatedGif')) {
+                throw new WireException('This Module is obsolete! Imageprocessing for Animated GIFs is supported through the PW Core now!');
+                return; // the core support is already installed
+            }
+            $this->modules->get('ImageSizerEngineAnimatedGif');  // try to install core support
+            if($this->modules->isInstalled('ImageSizerEngineAnimatedGif')) {
+                $this->warning('Installed Image Rendering Core Support Module for Animated GIFs!');
+                throw new WireException('This Module is obsolete! Imageprocessing for Animated GIFs is supported through the PW Core now!');
+                return; // now the core support is installed
+            }
+        }
     }
 
 
